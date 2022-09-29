@@ -169,7 +169,7 @@ def encrypt_table(station_df, agg_pk, r1, r2, symm_key, station):
     # Just trivial implementation - improve with vectorizing and
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
-    station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symm_key).encrypt(x.to_bytes(2, 'big')))
+    station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symm_key).encrypt(int(x).to_bytes(2, 'big')))
     # Step 1
     station_df["Label"] = station_df["Label"].apply(lambda x: encrypt(agg_pk, x))
     station_df["Flag"] = station_df["Flag"].apply(lambda x: encrypt(agg_pk, x))
@@ -254,8 +254,8 @@ def pp_auc_protocol(station_df, agg_paillier_pk, station=int):
         # TODO figure partially decrypted Sp of ra out
         # Step 4
         for i in range(len(prev_results['stations_rsa_pk'])):
-            enc_r1 = encrypt(prev_results['stations_rsa_pk'][i], r1) # Homomoprphic encryption used
-            enc_r2 = encrypt(prev_results['stations_rsa_pk'][i], r2)
+            enc_r1 = encrypt(prev_results['stations_paillier_pk'][i], r1) # Homomoprphic encryption used
+            enc_r2 = encrypt(prev_results['stations_paillier_pk'][i], r2)
             # Step 5
             prev_results['encrypted_r1'][i] = enc_r1
             prev_results['encrypted_r2'][i] = enc_r2
@@ -268,10 +268,10 @@ def pp_auc_protocol(station_df, agg_paillier_pk, station=int):
         sk_s_i = pickle.load(open('./data/keys/s' + str(station) + '_paillier_sk.p', 'rb'))
         pk_s_i = pickle.load(open('./data/keys/s' + str(station) + '_paillier_pk.p', 'rb'))
         # Step 8
-        dec_r1 = decrypt(sk_s_i, pk_s_i, enc_r1)
+        dec_r1 = decrypt(sk_s_i, enc_r1)
         print('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r1, dec_r1))
         enc_r2 = prev_results['encrypted_r2'][station-1]
-        dec_r2 = decrypt(sk_s_i, pk_s_i, enc_r2)
+        dec_r2 = decrypt(sk_s_i, enc_r2)
         print('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r2, dec_r2))
 
         # Step 9 / 10
@@ -348,7 +348,7 @@ def proxy_station():
     for i in range(len(results['encrypted_ks'])):
         enc_k_i = results['encrypted_ks'][i]
 
-        dec_k_i = decrypt_symm_key(i, rsa_agg_sk)
+        dec_k_i = decrypt_symm_key(i, enc_k_i)
         print('Decrypted k value {} of station {}'.format(dec_k_i, i+1))
 
         # decrypt table values with Fernet and corresponding k_i symmetric key
@@ -507,6 +507,9 @@ if __name__ == "__main__":
 
     results = train.load_results()
     results = generate_keys(stations, results)
+    # Train Building process
+    train.save_results(results)
+
     agg_paillier_pk = results['aggregator_paillier_pk']
 
     for i in range(stations):
