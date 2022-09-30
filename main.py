@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import time
 from random import randint
-from paillier.paillier import generate_keypair, encrypt, decrypt, e_add, e_mul_const, proxy_decrypt
+from paillier.paillier import generate_keypair, encrypt, decrypt, e_add, add, e_mul_const, proxy_decrypt
 import os
 import shutil
 from typing import Union
@@ -307,11 +307,10 @@ def sum_over_enc_series(encrypted_series, agg_pk):
     if len(encrypted_series) == 1:
         return encrypted_series[0]
     else:
-
         res = encrypt(agg_pk, 0)
-        for i in range(len(encrypted_series)):
-            enc_val = encrypted_series[i]
-            res = e_add(agg_pk, res, enc_val)
+        for cipher in encrypted_series:
+            res = add(agg_pk, res, cipher)
+
         return res
 
 
@@ -332,6 +331,7 @@ def generate_random_fast(M):
 
 
 def proxy_station():
+    # Step 21
     results = train.load_results()
     agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
     agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb'))
@@ -347,11 +347,11 @@ def proxy_station():
     df_list = []
     for i in range(len(results['encrypted_ks'])):
         enc_k_i = results['encrypted_ks'][i]
-
+        # Step 22
         dec_k_i = decrypt_symm_key(i, enc_k_i)
         print('Decrypted k value {} of station {}'.format(dec_k_i, i+1))
 
-        # decrypt table values with Fernet and corresponding k_i symmetric key
+        # Step 23 decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
         table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x)) # returns bytes
         table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
@@ -361,21 +361,25 @@ def proxy_station():
     concat_df.pop('Pre')
     print('\n')
     print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
+    # Step 24
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
     print(sort_df)
     df_new_index = sort_df.reset_index()
 
     # calculate TP / FN / TN and FP with paillier summation over rows
-
+    # Step 25
     TP_values = []
     FP_values = []
+
+    # Step 29
     r1_A = randint(1, 100)  # random value between 1 to 100
     r2_A = randint(1, 100)
 
     #  generate M random numbers which sum up to 0
+    # Step 31
     M = len(df_new_index)
     z_values = generate_random(M)
-    z_fast_values = generate_random_fast(M)
+    z_fast_values = generate_random_fast(M).astype(int)
 
     D_1_vals = []
     D_2_vals = []
@@ -386,35 +390,42 @@ def proxy_station():
     N_3_vals = []
 
     for i in range(M):
-        series_enc_label = df_new_index['Label'][:i+1]
-        series_enc_flag = df_new_index['Flag'][:i+1]
-        TP_value = sum_over_enc_series(series_enc_label, agg_pk)
+        TP_enc = sum_over_enc_series(df_new_index['Label'][:i+1], agg_pk)
+        print(decrypt(agg_sk, TP_enc))
 
-        TP_values.append(TP_value)
-        neg_tp_value = e_mul_const(agg_pk, TP_value, agg_pk.n -1)  # subtraction of enc_tp_val
-        FP_value = e_add(agg_pk, sum_over_enc_series(series_enc_flag, agg_pk), neg_tp_value)
-        FP_values.append(FP_value)
+        TP_values.append(TP_enc)
+
+
+        neg_TP = e_mul_const(agg_pk, TP_enc, -1)  # subtraction of enc_tp_val
+
+        FP_enc = e_add(agg_pk, sum_over_enc_series(df_new_index['Flag'][:i + 1], agg_pk), neg_TP)
+        FP_values.append(FP_enc)
 
         r1_i = randint(1, 100)
         r2_i = randint(1, 100)
 
-        D_1 = e_add(agg_pk, TP_value, encrypt(agg_pk, r1_A))
+        D_1 = e_add(agg_pk, TP_enc, encrypt(agg_pk, r1_A))
         D_1_vals.append(D_1)
-        D_2 = e_add(agg_pk, FP_value, encrypt(agg_pk, r2_A))
+
+        D_2 = e_add(agg_pk, FP_enc, encrypt(agg_pk, r2_A))
         D_2_vals.append(D_2)
-        D_31 = e_mul_const(agg_pk, TP_value, r2_A)
-        D_32 = e_mul_const(agg_pk, FP_value, r1_A)
-        D_33 = e_mul_const(agg_pk, encrypt(agg_pk, r1_A), encrypt(agg_pk, r2_A))
-        D_3 = e_add(agg_pk, e_add(agg_pk, D_31, D_32), D_33)
+
+        D_31 = e_mul_const(agg_pk, TP_enc, r2_A)
+        D_32 = e_mul_const(agg_pk, FP_enc, r1_A)
+        D_33 = r1_A * r2_A
+
+        D_3 = e_add(agg_pk, e_add(agg_pk, D_31, D_32), encrypt(agg_pk, D_33))
         D_3_vals.append(D_3)
-        N_i_1 = e_add(agg_pk, TP_value, encrypt(agg_pk, r1_i))
+
+        # Step 30
+        N_i_1 = e_add(agg_pk, TP_enc, encrypt(agg_pk, r1_i))
         N_1_vals.append(N_i_1)
 
-        N_i_2 = e_add(agg_pk, FP_value, encrypt(agg_pk, r2_i))
+        N_i_2 = e_add(agg_pk, FP_enc, encrypt(agg_pk, r2_i))
         N_2_vals.append(N_i_2)
 
-        N_i_31 = e_mul_const(agg_pk, TP_value, r2_i)
-        N_i_32 = e_mul_const(agg_pk, FP_value, r1_i)
+        N_i_31 = e_mul_const(agg_pk, TP_enc, r2_i)
+        N_i_32 = e_mul_const(agg_pk, FP_enc, r1_i)
         N_i_33 = e_mul_const(agg_pk, encrypt(agg_pk, r1_i), r2_i)
         N_i_3 = e_add(agg_pk, e_add(agg_pk, N_i_31, N_i_32), N_i_33)
         z_i = z_fast_values[i]
@@ -430,18 +441,18 @@ def proxy_station():
         N_3_vals.append(N_i_3_noise)
 
     # TODO test for validation of values! REMOVE in FINAL step
-    TP_dec = [decrypt(agg_sk, agg_pk, x) for x in TP_values]
-    FP_dec = [decrypt(agg_sk, agg_pk, x) for x in FP_values]
-    dec_label = [decrypt(agg_sk, agg_pk, x) for x in df_new_index["Label"]]
-    dec_flag = [decrypt(agg_sk, agg_pk, x) for x in df_new_index["Flag"]]
+    TP_dec = [decrypt(agg_sk, x) for x in TP_values]
+    FP_dec = [decrypt(agg_sk, x) for x in FP_values]
+    dec_label = [decrypt(agg_sk, x) for x in df_new_index["Label"]]
+    dec_flag = [decrypt(agg_sk, x) for x in df_new_index["Flag"]]
     full_series_enc_label = df_new_index['Label']
     full_series_enc_flag = df_new_index['Flag']
     TP_A = sum_over_enc_series(full_series_enc_flag, agg_pk)  # summation over all flags
     FP_A = sum_over_enc_series(full_series_enc_label, agg_pk)  # summation over all labels
 
     #  denominator -> D currently only with multiplication of decrypted value
-    D = e_mul_const(agg_pk, TP_A, decrypt(agg_sk, agg_pk, FP_A))
-
+    # D = e_mul_const(agg_pk, TP_A, decrypt(agg_sk, FP_A))
+    D = e_mul_const(agg_pk, TP_A, FP_A)
     # nominator of sum for each TP * FP value
     # N = sum TP * FP
 
