@@ -18,6 +18,7 @@ def invmod(a, p, maxiter=1000000):
             break
     else:
         raise ValueError('%d has no inverse mod %d' % (a, p))
+
     return d
 
 
@@ -58,7 +59,7 @@ class PublicKey(object):
         return '<PublicKey: %s %s %s>' % (self.n, self.g, self.h)
 
 
-def isinvmod(a, p, maxiter=1000000):
+def isinvmod(a, p, maxiter= 1000000):
     """The multiplicitive inverse of a in the integers modulo p:
          a * b == 1 mod p
        Returns b.
@@ -90,15 +91,15 @@ def randomElement(n):
     return g
 
 def chooseG(n):
-    a = randomElement(n)
+    a = randomElement(pow(n,2))
     g = pow((-1*a),(2*n),pow(n,2))
     return g
 
 def generate_keypair(bits):
-    p = generate_prime(bits / 2)
-    q = generate_prime(bits / 2)
+    p = generate_prime(bits)
+    q = generate_prime(bits)
     n = p * q
-    x = random.randrange(1, pow(n,2)/2, 1)
+    x = random.randrange(1, pow(n,2)>>1, 1)
     g = chooseG(n)
     return PrivateKey(n, x), PublicKey(n,g,x)
 
@@ -106,7 +107,7 @@ def generate_keypair(bits):
 def encrypt(pub, plain):
     r = random.randrange(1, pub.n/4, 1)
     c1 = pow(pub.g,r,pub.nsqr)
-    c2 = pow(pub.h,r,pub.nsqr) * (1+(plain * pub.n % pub.nsqr) % pub.nsqr) % pub.nsqr
+    c2 = (pow(pub.h,r,pub.nsqr) * (1+((plain * pub.n) % pub.nsqr) % pub.nsqr)) % pub.nsqr
     return [c1,c2]
 
 
@@ -149,7 +150,7 @@ def add_const(pub, a, n):
 def decrypt(priv, cipher):
     cinv = invmod(pow(cipher[0],priv.x, priv.nsqr),priv.nsqr)
     u = ((cipher[1] * cinv % priv.nsqr) - 1) % priv.nsqr
-    plain = u/priv.n
+    plain = u//priv.n
     return plain
 
 
@@ -162,7 +163,7 @@ def proxy_decrypt(priv, cipher):
 def decrypt2(priv, cipher):
     cinv = invmod(pow(cipher[0],priv.x2, priv.nsqr),priv.nsqr)
     u = ((cipher[1] * cinv % pow(priv.n,2)) - 1) % pow(priv.n,2)
-    plain = u/priv.n
+    plain = u//priv.n
     return plain
 
 
