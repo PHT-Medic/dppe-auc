@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import time
 from random import randint
-from paillier.paillier import generate_keypair, encrypt, decrypt, e_add, add, e_mul_const, proxy_decrypt
+from paillier.paillier import *
 import os
 import shutil
 from typing import Union
@@ -11,6 +11,8 @@ from sklearn import metrics
 import matplotlib.pyplot as plt
 from cryptography.fernet import Fernet
 import random
+#from phe import paillier
+
 
 import base64
 from cryptography.hazmat.backends import default_backend
@@ -41,13 +43,16 @@ class Train:
         except Exception:
             return {'enc_rx': {},
                     'pp_auc_tables': {},
-                    'encrypted_r1': {}, # index is for station for the following three lists
-                    'encrypted_r2': {},
                     'encrypted_ks': [],
+                    'encrypted_r1': {}, # index is used by station i
+                    'encrypted_r2': {},
                     'aggregator_rsa_pk': {},
                     'aggregator_paillier_pk': {},
                     'stations_paillier_pk': {},
                     'stations_rsa_pk': {},
+                    'proxy_encrypted_r_1A': [],
+                    'proxy_encrypted_r_2A': [],
+                    'proxy_encrypted_r_N': {}, # index 0 = r1_iN; 1 = r2_iN
                     'test_r1': {},
                     'test_r2': {}
                     }
@@ -329,6 +334,152 @@ def generate_random_fast(M):
     pick = np.insert(pick.round()[0], 1, -sum(pick.round()[0]))
     return pick
 
+def proxy_new():
+    # Step 21
+    results = train.load_results()
+    agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
+    agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb'))
+
+    # decrypt symm key (k_stations)
+    with open('./data/keys/agg_rsa_private_key.pem', 'rb') as key_file:
+        rsa_agg_sk = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None,
+            backend=default_backend()
+        )
+
+    df_list = []
+    for i in range(len(results['encrypted_ks'])):
+        enc_k_i = results['encrypted_ks'][i]
+        # Step 22
+        dec_k_i = decrypt_symm_key(i, enc_k_i)
+        print('Decrypted k value {} of station {}'.format(dec_k_i, i + 1))
+
+        # Step 23 decrypt table values with Fernet and corresponding k_i symmetric key
+        table_i = results['pp_auc_tables'][i]
+        table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x))  # returns bytes
+        table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
+        df_list.append(table_i)
+    # dec_symm = decrypt(priv, pub, enc_symm)
+    concat_df = pd.concat(df_list)
+    concat_df.pop('Pre')
+    print('\n')
+    print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
+    # Step 24
+    sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
+    print(sort_df)
+    df_new_index = sort_df.reset_index()
+
+    # calculate TP / FN / TN and FP with paillier summation over rows
+    # Step 25
+    TP_values = []
+    FP_values = []
+
+    #  generate M random numbers which sum up to 0
+    # Step 31
+    M = len(df_new_index)
+
+    # TODO show how sometimes works - sometimes not
+    for i in range(M):
+        TP_enc = sum_over_enc_series(df_new_index['Label'][:i+1], agg_pk)
+        TP_values.append(TP_enc)
+
+    print("TP test")
+    for x in TP_values:
+        print(decrypt(agg_sk, x))
+
+    for i in range(M):
+        # print("TP: {}".format(decrypt(agg_sk, TP_enc)))
+        # #TP_i = TP_values[i]
+        neg_TP = mul_const(agg_pk, TP_values[i], -1)  # subtraction of enc_tp_val # TODO move up later (TP_enc)
+        print("neg TP: {}".format(decrypt(agg_sk, neg_TP)))
+
+        # FP_values.append(FP_enc)
+        pre_FP_enc = sum_over_enc_series(df_new_index['Flag'][:i + 1], agg_pk)
+
+        FP_enc = e_add(agg_pk, pre_FP_enc, neg_TP)
+        FP_values.append(FP_enc)
+        # print("neg TP: {}".format(decrypt(agg_sk, neg_TP)))
+        # print("FP: {}".format(decrypt(agg_sk, FP_enc)))
+
+
+
+    print("FP")
+    for x in FP_values:
+        print(decrypt(agg_sk, x))
+
+
+    a = randint(1, 100)
+    b = randint(1, 100)
+    TP_A = sum_over_enc_series(TP_values, agg_pk)
+    FP_A = sum_over_enc_series(FP_values, agg_pk)
+
+    TP_Aa = mul_const(agg_pk, TP_A, a)
+    FP_Aa = mul_const(agg_pk, FP_A, b)
+
+    TP_a = []
+    FP_a = []
+
+    # Multiply with a and b respectively
+    for i in range(M):
+        TP_i = TP_values[i]
+        TP_a.append(mul_const(agg_pk, TP_i, a))
+
+        FP_i = FP_values[i]
+        FP_a.append(mul_const(agg_pk, FP_i, b))
+
+    # Denominator
+    r_1A = randint(1, 100)
+    r_2A = randint(1, 100)
+
+    D1 = add_const(agg_pk, TP_A, r_1A)
+    D2 = add_const(agg_pk, FP_A, r_2A)
+
+    D3_1 = mul_const(agg_pk, TP_A, r_2A)
+    D3_2 = mul_const(agg_pk, FP_A, r_1A)
+    # D3_3 = encrypt(agg_pk, r_1A*r_2A)
+
+    D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A*r_2A))
+
+    # Nominator
+    N_i1 = []
+    N_i2 = []
+    N_i3 = []
+
+    # Generate random values with sum 0
+    z_values = generate_random_fast(M).astype(int)
+    enc_rand_n_vals = {"r1_i": [],
+                       "r2_i": []
+                       }
+    for i in range(M):
+        r1_i = randint(1, 100)
+        r2_i = randint(1, 100)
+        enc_rand_n_vals["r1_i"].append(encrypt(agg_pk, r1_i))
+        enc_rand_n_vals["r2_i"].append(encrypt(agg_pk, r2_i))
+
+        TP_i = TP_values[i]
+        FP_i = FP_values[i]
+
+        N_i1.append(add_const(agg_pk, TP_i, r1_i))
+        N_i2.append(add_const(agg_pk, FP_i, r2_i))
+
+        N_i3_1 = mul_const(agg_pk, TP_i, r2_i)
+        N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
+        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i*r2_i))
+        # Add z values to N_i3
+        N_i3.append(add_const(agg_pk, N_i3_a, z_values[i]))
+
+    # partial decrypt all random values r_1A r_1A r1_i r2_i
+    results["proxy_encrypted_r_1A"].append(proxy_decrypt(agg_sk, encrypt(agg_pk, r_1A)))
+    results["proxy_encrypted_r_2A"].append(proxy_decrypt(agg_sk, encrypt(agg_pk, r_2A)))
+
+    r1_i_part_dec = [proxy_decrypt(agg_sk, x) for x in enc_rand_n_vals["r1_i"]]
+    results["proxy_encrypted_r_N"][0] = r1_i_part_dec # r1_i
+
+    r2_i_part_dec = [proxy_decrypt(agg_sk, y) for y in enc_rand_n_vals["r2_i"]]
+    results["proxy_encrypted_r_N"][1] = r2_i_part_dec  # r2_i
+
+
 
 def proxy_station():
     # Step 21
@@ -541,8 +692,8 @@ if __name__ == "__main__":
         print('Stored train results')
     print('\n ------ \n PROXY STATION')
 
-    #  TODO compute pp-AUC with aggregator
-    pp_auc = proxy_station() # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
+    # pp_auc = proxy_station() # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
+    pp_auc_results = proxy_new()  # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
 
     # TODO itererate over stations and calcucale TP/(TP+FN) and TN/(TN+FP) for each threshold value
 
