@@ -53,8 +53,14 @@ class Train:
                     'proxy_encrypted_r_1A': [],
                     'proxy_encrypted_r_2A': [],
                     'proxy_encrypted_r_N': {}, # index 0 = r1_iN; 1 = r2_iN
-                    'test_r1': {},
-                    'test_r2': {}
+                    'test_r1' : {},
+                    'test_r2': {},
+                    'D1': [],
+                    'D2': [],
+                    'D3': [],
+                    'N1': {},
+                    'N2': {},
+                    'N3': {},
                     }
 
     def save_results(self, results):
@@ -379,14 +385,19 @@ def proxy_new():
     # Step 31
     M = len(df_new_index)
 
-    # TODO show how sometimes works - sometimes not
     for i in range(M):
         TP_enc = sum_over_enc_series(df_new_index['Label'][:i+1], agg_pk)
         TP_values.append(TP_enc)
+        print("TP: {}".format(decrypt(agg_sk, TP_enc)))
+        print("neg TP: {}".format(decrypt(agg_sk,mul_const(agg_pk, TP_enc, -1))))
 
-    print("TP test")
-    for x in TP_values:
-        print(decrypt(agg_sk, x))
+    # Uncomment to see behaviour
+    print("TP test from list")
+    for x in range(M):
+        print("List accessed TP: {}".format(decrypt(agg_sk, TP_values[x])))
+        print("List accessed neg TP: {}".format(decrypt(agg_sk, mul_const(agg_pk, TP_values[x], -1))))
+
+    exit(0)
 
     for i in range(M):
         # print("TP: {}".format(decrypt(agg_sk, TP_enc)))
@@ -441,6 +452,10 @@ def proxy_new():
 
     D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A*r_2A))
 
+    results["D1"].append(D1)
+    results["D2"].append(D2)
+    results["D3"].append(D3)
+
     # Nominator
     N_i1 = []
     N_i2 = []
@@ -448,9 +463,11 @@ def proxy_new():
 
     # Generate random values with sum 0
     z_values = generate_random_fast(M).astype(int)
-    enc_rand_n_vals = {"r1_i": [],
-                       "r2_i": []
-                       }
+    enc_rand_n_vals = {
+        "r1_i": [],
+        "r2_i": []
+                    }
+
     for i in range(M):
         r1_i = randint(1, 100)
         r2_i = randint(1, 100)
@@ -469,6 +486,10 @@ def proxy_new():
         # Add z values to N_i3
         N_i3.append(add_const(agg_pk, N_i3_a, z_values[i]))
 
+    results["N1"] = N_i1
+    results["N2"] = N_i2
+    results["N3"] = N_i3
+
     # partial decrypt all random values r_1A r_1A r1_i r2_i
     results["proxy_encrypted_r_1A"].append(proxy_decrypt(agg_sk, encrypt(agg_pk, r_1A)))
     results["proxy_encrypted_r_2A"].append(proxy_decrypt(agg_sk, encrypt(agg_pk, r_2A)))
@@ -479,7 +500,34 @@ def proxy_new():
     r2_i_part_dec = [proxy_decrypt(agg_sk, y) for y in enc_rand_n_vals["r2_i"]]
     results["proxy_encrypted_r_N"][1] = r2_i_part_dec  # r2_i
 
+    train.save_results(results)
 
+def stations_auc(station):
+    results = train.load_results()
+    agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb')) # todo split sk in sk_1 and sk_2
+
+    print("Station {}: ".format(station+1))
+    # decrypt random components
+    results_copy = results
+    r_1A = decrypt2(agg_sk, results['proxy_encrypted_r_1A'][0])
+    r_2A = decrypt2(agg_sk, results['proxy_encrypted_r_2A'][0])
+
+    r_iN1 = []
+    r_iN2 = []
+
+    for i in range(len(results['proxy_encrypted_r_N'][0])):
+        r_iN1.append(decrypt2(agg_sk, results['proxy_encrypted_r_N'][0][i]))
+        r_iN2.append(decrypt2(agg_sk, results['proxy_encrypted_r_N'][1][i]))
+
+    r_iNs = {"r_iN1": r_iN1,
+             "r_iN2": r_iN2}
+
+    print("r_1A:", r_1A)
+    print("r_2A:", r_2A)
+    print(r_iNs)
+
+    # AUC computation - ask if random components need to be subtracted from N1, N2, N3 and D1, D2, D3 and decryption
+    D_1 = decrypt(agg_sk, results["D1"][0])
 
 def proxy_station():
     # Step 21
@@ -696,5 +744,5 @@ if __name__ == "__main__":
     pp_auc_results = proxy_new()  # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
 
     # TODO itererate over stations and calcucale TP/(TP+FN) and TN/(TN+FP) for each threshold value
-
-    # TODO calculate exact PP_AUC for comparison of regular_AUC
+    for i in range(stations):
+        stations_auc(i)
