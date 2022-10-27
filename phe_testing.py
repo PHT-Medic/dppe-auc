@@ -10,8 +10,9 @@ if __name__ == "__main__":
 
     print("Number {}".format(number))
     print("Enc number {}".format(cipher_1))
+    
     print("Dec number: {}".format(decrypt(priv, cipher_1)))
-    print("Neg Dec number: {}".format(decrypt(priv, cipher_2)))
+    #print("Neg Dec number: {}".format(decrypt(priv, cipher_2)))
 
     number2 = 4
     cipher_3 = encrypt(pub,number2)
