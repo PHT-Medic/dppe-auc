@@ -50,8 +50,6 @@ class Train:
                     'aggregator_paillier_pk': {},
                     'stations_paillier_pk': {},
                     'stations_rsa_pk': {},
-                    'proxy_encrypted_r_1A': [],
-                    'proxy_encrypted_r_2A': [],
                     'proxy_encrypted_r_N': {}, # index 0 = r1_iN; 1 = r2_iN
                     'test_r1' : {},
                     'test_r2': {},
@@ -100,6 +98,44 @@ def create_protocol_data():
     df3 = pd.DataFrame(data_3, columns=['Pre', 'Label', 'Flag'])
     df3.to_pickle('./data/synthetic/protocol_data_s3.pkl')
 
+def calculate_regular_auc(stations, protocol):
+    lst_df = []
+    for i in range(stations):
+        if protocol:
+            df_i = pickle.load(open('./data/synthetic/protocol_data_s' + str(i+1) + '.pkl', 'rb'))
+        else:
+            df_i = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
+        lst_df.append(df_i)
+
+    # drop flag patients
+    concat_df = pd.concat(lst_df)
+    filtered_df = concat_df[concat_df["Flag"] == 0] # remove flag patients
+    sort_df = filtered_df.sort_values(by='Pre', ascending=False)
+
+    # iterate over sorted list
+    auc = 0.0
+    height = 0.0
+    sort_df["Pre"] = sort_df["Pre"] / 100
+    y = sort_df["Label"]
+    pred = sort_df["Pre"]
+    fpr, tpr, thesholds = metrics.roc_curve(y, pred, pos_label=1)
+    auc = metrics.auc(fpr, tpr)
+
+    plt.figure()
+    lw = 1
+    plt.plot(fpr, tpr, color='darkorange',
+             lw=lw, label='ROC curve (area = %0.2f)' % metrics.auc(fpr, tpr))
+    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC of ground truth')
+    plt.legend(loc="lower right")
+    plt.show()
+
+    # return exact auc to be benchmarked with
+    return auc
 
 def generate_keys(stations, results):
     # generate keys of stations
@@ -340,7 +376,7 @@ def generate_random_fast(M):
     pick = np.insert(pick.round()[0], 1, -sum(pick.round()[0]))
     return pick
 
-def proxy_new():
+def proxy_station():
     # Step 21
     results = train.load_results()
     agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
@@ -366,14 +402,14 @@ def proxy_new():
         table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x))  # returns bytes
         table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
         df_list.append(table_i)
-    # dec_symm = decrypt(priv, pub, enc_symm)
+
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
     print('\n')
-    print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
+    #print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
     # Step 24
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
-    print(sort_df)
+    #print(sort_df)
     df_new_index = sort_df.reset_index()
 
     # calculate TP / FN / TN and FP with paillier summation over rows
@@ -381,50 +417,35 @@ def proxy_new():
     TP_values = []
     FP_values = []
 
-    #  generate M random numbers which sum up to 0
+
     # Step 31
     M = len(df_new_index)
 
     for i in range(M):
         TP_enc = sum_over_enc_series(df_new_index['Label'][:i+1], agg_pk)
         TP_values.append(TP_enc)
-        print("TP: {}".format(decrypt(agg_sk, TP_enc)))
-        print("neg TP: {}".format(decrypt(agg_sk,mul_const(agg_pk, TP_enc, -1))))
+        #print("TP: {}".format(decrypt(agg_sk, TP_enc)))
 
-    # Uncomment to see behaviour
-    print("TP test from list")
-    for x in range(M):
-        print("List accessed TP: {}".format(decrypt(agg_sk, TP_values[x])))
-        print("List accessed neg TP: {}".format(decrypt(agg_sk, mul_const(agg_pk, TP_values[x], -1))))
-
-    exit(0)
+    #for x in range(M):
+    #    print("List accessed TP: {}".format(decrypt(agg_sk, TP_values[x])))
 
     for i in range(M):
-        # print("TP: {}".format(decrypt(agg_sk, TP_enc)))
-        # #TP_i = TP_values[i]
-        neg_TP = mul_const(agg_pk, TP_values[i], -1)  # subtraction of enc_tp_val # TODO move up later (TP_enc)
-        print("neg TP: {}".format(decrypt(agg_sk, neg_TP)))
-
-        # FP_values.append(FP_enc)
+        # subtraction of enc_tp_val
         pre_FP_enc = sum_over_enc_series(df_new_index['Flag'][:i + 1], agg_pk)
-
-        FP_enc = e_add(agg_pk, pre_FP_enc, neg_TP)
+        FP_enc = e_add(agg_pk, pre_FP_enc, mul_const(agg_pk, TP_values[i], -1))
         FP_values.append(FP_enc)
-        # print("neg TP: {}".format(decrypt(agg_sk, neg_TP)))
-        # print("FP: {}".format(decrypt(agg_sk, FP_enc)))
+        #print("FP: {}".format(decrypt(agg_sk, FP_enc)))
 
-
-
-    print("FP")
-    for x in FP_values:
-        print(decrypt(agg_sk, x))
+    # Uncomment to see behaviour
+    #for x in range(M):
+    #     print("List accessed FP: {}".format(decrypt(agg_sk, FP_values[x])))
 
 
     a = randint(1, 100)
     b = randint(1, 100)
     TP_A = sum_over_enc_series(TP_values, agg_pk)
     FP_A = sum_over_enc_series(FP_values, agg_pk)
-
+    # TODO most likely error here
     TP_Aa = mul_const(agg_pk, TP_A, a)
     FP_Aa = mul_const(agg_pk, FP_A, b)
 
@@ -452,27 +473,24 @@ def proxy_new():
 
     D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A*r_2A))
 
-    results["D1"].append(D1)
-    results["D2"].append(D2)
-    results["D3"].append(D3)
+    part_dec_D1 = proxy_decrypt(agg_sk, D1)
+    part_dec_D2 = proxy_decrypt(agg_sk, D2)
+    part_dec_D3 = proxy_decrypt(agg_sk, D3)
+    results["D1"].append(part_dec_D1)
+    results["D2"].append(part_dec_D2)
+    results["D3"].append(part_dec_D3)
 
     # Nominator
     N_i1 = []
     N_i2 = []
     N_i3 = []
 
-    # Generate random values with sum 0
+    #  generate M random numbers which sum up to 0
     z_values = generate_random_fast(M).astype(int)
-    enc_rand_n_vals = {
-        "r1_i": [],
-        "r2_i": []
-                    }
 
     for i in range(M):
         r1_i = randint(1, 100)
         r2_i = randint(1, 100)
-        enc_rand_n_vals["r1_i"].append(encrypt(agg_pk, r1_i))
-        enc_rand_n_vals["r2_i"].append(encrypt(agg_pk, r2_i))
 
         TP_i = TP_values[i]
         FP_i = FP_values[i]
@@ -483,22 +501,23 @@ def proxy_new():
         N_i3_1 = mul_const(agg_pk, TP_i, r2_i)
         N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
         N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i*r2_i))
-        # Add z values to N_i3
-        N_i3.append(add_const(agg_pk, N_i3_a, z_values[i]))
+        # Add z values to N_i3_a
+        z_i = z_values[i]
+        if z_i < 0:
+            # If noise is negative, multiply by -1 and add encrypted neg z value
+            enc_z_i = encrypt(agg_pk, abs(int(z_i)))
+            n_i_3_noise = e_add(agg_pk, N_i3_a, mul_const(agg_pk, enc_z_i, -1))
+        else:
+            n_i_3_noise = add_const(agg_pk, N_i3_a, z_i)
 
-    results["N1"] = N_i1
-    results["N2"] = N_i2
-    results["N3"] = N_i3
+        N_i3.append(n_i_3_noise)
 
-    # partial decrypt all random values r_1A r_1A r1_i r2_i
-    results["proxy_encrypted_r_1A"].append(proxy_decrypt(agg_sk, encrypt(agg_pk, r_1A)))
-    results["proxy_encrypted_r_2A"].append(proxy_decrypt(agg_sk, encrypt(agg_pk, r_2A)))
-
-    r1_i_part_dec = [proxy_decrypt(agg_sk, x) for x in enc_rand_n_vals["r1_i"]]
-    results["proxy_encrypted_r_N"][0] = r1_i_part_dec # r1_i
-
-    r2_i_part_dec = [proxy_decrypt(agg_sk, y) for y in enc_rand_n_vals["r2_i"]]
-    results["proxy_encrypted_r_N"][1] = r2_i_part_dec  # r2_i
+    part_dec_n1 = [proxy_decrypt(agg_sk, x) for x in N_i1]
+    part_dec_n2 = [proxy_decrypt(agg_sk, x) for x in N_i2]
+    part_dec_n3 = [proxy_decrypt(agg_sk, x) for x in N_i3]
+    results["N1"] = part_dec_n1
+    results["N2"] = part_dec_n2
+    results["N3"] = part_dec_n3
 
     train.save_results(results)
 
@@ -509,27 +528,35 @@ def stations_auc(station):
     print("Station {}: ".format(station+1))
     # decrypt random components
     results_copy = results
-    r_1A = decrypt2(agg_sk, results['proxy_encrypted_r_1A'][0])
-    r_2A = decrypt2(agg_sk, results['proxy_encrypted_r_2A'][0])
+    D1 = decrypt2(agg_sk, results['D1'][0])
+    D2 = decrypt2(agg_sk, results['D2'][0])
+    D3 = decrypt2(agg_sk, results['D3'][0])
+    #print(D1)
+    #print(D2)
+    #print(D3)
 
-    r_iN1 = []
-    r_iN2 = []
+    iN1 = []
+    iN2 = []
+    iN3 = []
 
-    for i in range(len(results['proxy_encrypted_r_N'][0])):
-        r_iN1.append(decrypt2(agg_sk, results['proxy_encrypted_r_N'][0][i]))
-        r_iN2.append(decrypt2(agg_sk, results['proxy_encrypted_r_N'][1][i]))
+    for i in range(len(results['N1'])):
+        iN1.append(decrypt2(agg_sk, results['N1'][i]))
+        iN2.append(decrypt2(agg_sk, results['N2'][i]))
+        iN3.append(decrypt2(agg_sk, results['N3'][i]))
 
-    r_iNs = {"r_iN1": r_iN1,
-             "r_iN2": r_iN2}
+    iNs = {"iN1": iN1,
+             "iN2": iN2,
+             "iN3": iN3}
 
-    print("r_1A:", r_1A)
-    print("r_2A:", r_2A)
-    print(r_iNs)
+    #print(iNs)
+    N = 0
+    for i in range(len(results['N1'])):
+        N += ((iN1[i] * iN2[i]) + iN3[i])
+    AUC = N / ((D1 * D2) + D3)
+    print(AUC)
 
-    # AUC computation - ask if random components need to be subtracted from N1, N2, N3 and D1, D2, D3 and decryption
-    D_1 = decrypt(agg_sk, results["D1"][0])
 
-def proxy_station():
+def proxy_station_old():
     # Step 21
     results = train.load_results()
     agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
@@ -559,10 +586,10 @@ def proxy_station():
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
     print('\n')
-    print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
+    #print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
     # Step 24
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
-    print(sort_df)
+    #print(sort_df)
     df_new_index = sort_df.reset_index()
 
     # calculate TP / FN / TN and FP with paillier summation over rows
@@ -577,7 +604,7 @@ def proxy_station():
     #  generate M random numbers which sum up to 0
     # Step 31
     M = len(df_new_index)
-    z_values = generate_random(M)
+    #z_values = generate_random(M)
     z_fast_values = generate_random_fast(M).astype(int)
 
     D_1_vals = []
@@ -685,9 +712,9 @@ def proxy_station():
 
 if __name__ == "__main__":
     stations = 3  # TODO adjust
-    subjects = 10  # TODO adjust
+    subjects = 50  # TODO adjust
     recreate = False # Set first True then false for running
-    protocol = True
+    protocol = False
 
     train = Train(results='results.pkl')
     try:
@@ -722,6 +749,10 @@ if __name__ == "__main__":
 
     agg_paillier_pk = results['aggregator_paillier_pk']
 
+    # compute AUC without encryption for proof of principal of pp_auc
+    auc = calculate_regular_auc(stations, protocol)
+    print('AUC value of ground truth {}'.format(auc))
+
     for i in range(stations):
         if protocol:
             stat_df = pickle.load(open('./data/synthetic/protocol_data_s' + str(i+1) + '.pkl', 'rb'))
@@ -741,7 +772,7 @@ if __name__ == "__main__":
     print('\n ------ \n PROXY STATION')
 
     # pp_auc = proxy_station() # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
-    pp_auc_results = proxy_new()  # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
+    pp_auc_results = proxy_station()  # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
 
     # TODO itererate over stations and calcucale TP/(TP+FN) and TN/(TN+FP) for each threshold value
     for i in range(stations):
