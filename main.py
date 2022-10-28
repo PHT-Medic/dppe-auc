@@ -386,7 +386,7 @@ def compute_TP_FP_values(dataframe, agg_pk, length):
         val = decrypt(agg_sk, TP_values[x])
         sum += val
         print("List accessed TP: {}".format(val))
-    print("Exptected sum: ", sum)
+    print("Exptected TP sum: ", sum)
 
     for i in range(length):
         # subtraction of enc_tp_val
@@ -395,12 +395,15 @@ def compute_TP_FP_values(dataframe, agg_pk, length):
         #print("Pre TP: {}".format(decrypt(agg_sk, TP_values[i])))
         FP_enc = e_add(agg_pk, pre_FP_enc, mul_const(agg_pk, TP_values[i], -1)) # subtraction
         FP_values.append(FP_enc)
-        #print("FP: {}".format(decrypt(agg_sk, FP_enc)))
+        print("FP: {}".format(decrypt(agg_sk, FP_enc)))
 
     # Uncomment to see behaviour
-    #for x in range(length):
-    #     print("List accessed FP: {}".format(decrypt(agg_sk, FP_values[x])))
-
+    sum = 0
+    for x in range(length):
+         val = decrypt(agg_sk, FP_values[x])
+         sum += val
+         print("List accessed FP: {}".format(val))
+    print("Exptected FP sum: ", sum)
     return TP_values, FP_values
 
 
@@ -495,8 +498,8 @@ def proxy_station():
     print("TP Summe:", decrypt(agg_sk, TP_A))
 
     FP_A = e_add(agg_pk, sum_over_enc_series(FP_values, agg_pk), mul_const(agg_pk, TP_A, -1))
-    print(decrypt(agg_sk, FP_A))
-    exit(0)
+    print("FP Summe:", decrypt(agg_sk, FP_A))
+
     # Step 26
     a = randint(1, 100)
     b = randint(1, 100)
@@ -571,9 +574,9 @@ def stations_auc(station):
     N = 0
     for i in range(len(results['N1'])):
         N += ((iN1[i] * iN2[i]) + iN3[i])
-        print(N)
+        #print(N)
     AUC = N / ((D1 * D2) + D3)
-    print(AUC)
+    print("PP-AUC:", AUC)
 
 
 def proxy_station_old():
