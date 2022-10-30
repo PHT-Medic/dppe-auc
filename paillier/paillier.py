@@ -113,38 +113,29 @@ def encrypt(pub, plain):
 
 def add(pub, a, b):
     """Add one encrypted integer to another"""
-    a[0] = a[0] * b[0] % pub.nsqr
-    a[1] = a[1] * b[1] % pub.nsqr
-    return a
+    return [a[0] * b[0] % pub.nsqr, a[1] * b[1] % pub.nsqr]
 
 
 def e_add(pub, a, b):
     """Add one encrypted integer to another"""
-    a[0] = a[0] * b[0] % pub.nsqr
-    a[1] = a[1] * b[1] % pub.nsqr
-    return a
+    return [a[0] * b[0] % pub.nsqr, a[1] * b[1] % pub.nsqr]
 
 
 def e_mul_const(pub, a, n):
     """Multiplies an ancrypted integer by a constant"""
-    a[0] = pow(a[0],n,pub.nsqr)
-    a[1] = pow(a[1],n,pub.nsqr)
-    return a
+    return [pow(a[0],n,pub.nsqr), pow(a[1],n,pub.nsqr)]
+
 
 
 def mul_const(pub, a, n):
     """Multiplies an ancrypted integer by a constant"""
-    a[0] = pow(a[0],n,pub.nsqr)
-    a[1] = pow(a[1],n,pub.nsqr)
-    return a
+    return [pow(a[0],n,pub.nsqr), pow(a[1],n,pub.nsqr)]
 
 
 def add_const(pub, a, n):
     """Add one encrypted integer to a constant"""
     b = encrypt(pub, n)
-    a[0] = a[0] * b[0] % pub.nsqr
-    a[1] = a[1] * b[1] % pub.nsqr
-    return a
+    return [a[0] * b[0] % pub.nsqr, a[1] * b[1] % pub.nsqr]
 
 
 def decrypt(priv, cipher):
