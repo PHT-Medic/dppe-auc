@@ -29,6 +29,7 @@ class Train:
         """
         self.results = results
 
+
     def load_results(self):
         """
         If a result file exists, loads the results. Otherwise will return empty results.
@@ -60,6 +61,7 @@ class Train:
                     'N2': {},
                     'N3': {},
                     }
+
 
     def save_results(self, results):
         """
@@ -97,6 +99,7 @@ def create_protocol_data():
               "Flag": [1, 0, 0, 1, 0]}
     df3 = pd.DataFrame(data_3, columns=['Pre', 'Label', 'Flag'])
     df3.to_pickle('./data/synthetic/protocol_data_s3.pkl')
+
 
 def calculate_regular_auc(stations, protocol):
     lst_df = []
@@ -136,6 +139,7 @@ def calculate_regular_auc(stations, protocol):
 
     # return exact auc to be benchmarked with
     return auc
+
 
 def generate_keys(stations, results):
     # generate keys of stations
@@ -298,7 +302,7 @@ def pp_auc_protocol(station_df, agg_paillier_pk, station=int):
 
         # encrypt r1 and r2 for stations rsa_pk
         #  prev_results['enc_rx'][station-1] = ra_enc
-        # TODO figure partially decrypted Sp of ra out
+
         # Step 4
         for i in range(len(prev_results['stations_rsa_pk'])):
             enc_r1 = encrypt(prev_results['stations_paillier_pk'][i], r1) # Homomoprphic encryption used
@@ -385,24 +389,25 @@ def compute_TP_FP_values(dataframe, agg_pk, length):
     for x in range(length):
         val = decrypt(agg_sk, TP_values[x])
         sum += val
-        print("List accessed TP: {}".format(val))
+        #print("List accessed TP: {}".format(val))
     print("Exptected TP sum: ", sum)
 
     for i in range(length):
         # subtraction of enc_tp_val
         pre_FP_enc = sum_over_enc_series(dataframe['Flag'][:i + 1], agg_pk)
         #print("Pre FP: {}".format(decrypt(agg_sk, pre_FP_enc)))
+        # TODO Fix FP - is wrong in computation
         #print("Pre TP: {}".format(decrypt(agg_sk, TP_values[i])))
         FP_enc = e_add(agg_pk, pre_FP_enc, mul_const(agg_pk, TP_values[i], -1)) # subtraction
         FP_values.append(FP_enc)
-        print("FP: {}".format(decrypt(agg_sk, FP_enc)))
+        #print("FP: {}".format(decrypt(agg_sk, FP_enc)))
 
     # Uncomment to see behaviour
     sum = 0
     for x in range(length):
          val = decrypt(agg_sk, FP_values[x])
          sum += val
-         print("List accessed FP: {}".format(val))
+         #print("List accessed FP: {}".format(val))
     print("Exptected FP sum: ", sum)
     return TP_values, FP_values
 
@@ -464,7 +469,7 @@ def proxy_station():
     agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
     agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb'))
 
-    # decrypt symm keys (k_stations)
+    # decrypt symmetric keys (k_stations)
     df_list = []
     for i in range(len(results['encrypted_ks'])):
         enc_k_i = results['encrypted_ks'][i]
@@ -495,51 +500,43 @@ def proxy_station():
     # TP_A is summation of labels (TP)
     # FP_A is sum Flags (FP) - TP_A
     TP_A = sum_over_enc_series(TP_values, agg_pk)
-    print("TP Summe:", decrypt(agg_sk, TP_A))
+    print("TP_A:", decrypt(agg_sk, TP_A))
 
-    FP_A = e_add(agg_pk, sum_over_enc_series(FP_values, agg_pk), mul_const(agg_pk, TP_A, -1))
-    print("FP Summe:", decrypt(agg_sk, FP_A))
+    FP_A = e_add(agg_pk,  sum_over_enc_series(FP_values, agg_pk), mul_const(agg_pk,TP_A, -1))
+    print("FP_A :", decrypt(agg_sk, FP_A))
 
     # Step 26
     a = randint(1, 100)
     b = randint(1, 100)
 
-
     # Step 27
-    TP_A_mul = mul_const(agg_pk, TP_A, a)
+    tp_a_multiplied = mul_const(agg_pk, TP_A, a)
     FP_A_mul = mul_const(agg_pk, FP_A, b)
 
     # Step 28
-    TP_a = []
-    FP_a = []
+    TP_is = []
+    FP_is = []
     # Multiply with a and b respectively
     for i in range(M):
         TP_i = TP_values[i]
-        TP_a.append(mul_const(agg_pk, TP_i, a))
+        TP_is.append(mul_const(agg_pk, TP_i, a))
 
         FP_i = FP_values[i]
-        FP_a.append(mul_const(agg_pk, FP_i, b))
+        FP_is.append(mul_const(agg_pk, FP_i, b))
 
 
-    D1, D2, D3 = calc_denominator(TP_A_mul, FP_A_mul, agg_pk)
-
-    # partial decrypt and save to train
-    part_dec_D1 = proxy_decrypt(agg_sk, D1)
-    part_dec_D2 = proxy_decrypt(agg_sk, D2)
-    part_dec_D3 = proxy_decrypt(agg_sk, D3)
-    results["D1"].append(part_dec_D1)
-    results["D2"].append(part_dec_D2)
-    results["D3"].append(part_dec_D3)
+    D1, D2, D3 = calc_denominator(tp_a_multiplied, FP_A_mul, agg_pk)
 
     # Step 30
-    N_i1, N_i2, N_i3 = calc_nominator(TP_a, FP_a, agg_pk, M)
+    N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, M)
 
-    part_dec_n1 = [proxy_decrypt(agg_sk, x) for x in N_i1]
-    part_dec_n2 = [proxy_decrypt(agg_sk, x) for x in N_i2]
-    part_dec_n3 = [proxy_decrypt(agg_sk, x) for x in N_i3]
-    results["N1"] = part_dec_n1
-    results["N2"] = part_dec_n2
-    results["N3"] = part_dec_n3
+    # partial decrypt and save to train
+    results["D1"].append(proxy_decrypt(agg_sk, D1))
+    results["D2"].append(proxy_decrypt(agg_sk, D2))
+    results["D3"].append(proxy_decrypt(agg_sk, D3))
+    results["N1"] = [proxy_decrypt(agg_sk, x) for x in N_i1]
+    results["N2"] = [proxy_decrypt(agg_sk, x) for x in N_i2]
+    results["N3"] = [proxy_decrypt(agg_sk, x) for x in N_i3]
 
     train.save_results(results)
 
@@ -570,173 +567,20 @@ def stations_auc(station):
              "iN2": iN2,
              "iN3": iN3}
 
-    #print(iNs)
+    print(iNs)
     N = 0
     for i in range(len(results['N1'])):
         N += ((iN1[i] * iN2[i]) + iN3[i])
         #print(N)
     AUC = N / ((D1 * D2) + D3)
-    print("PP-AUC:", AUC)
-
-
-def proxy_station_old():
-    # Step 21
-    results = train.load_results()
-    agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
-    agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb'))
-
-    # decrypt symm key (k_stations)
-    with open('./data/keys/agg_rsa_private_key.pem', 'rb') as key_file:
-        rsa_agg_sk = serialization.load_pem_private_key(
-            key_file.read(),
-            password=None,
-            backend=default_backend()
-        )
-
-    df_list = []
-    for i in range(len(results['encrypted_ks'])):
-        enc_k_i = results['encrypted_ks'][i]
-        # Step 22
-        dec_k_i = decrypt_symm_key(i, enc_k_i)
-        print('Decrypted k value {} of station {}'.format(dec_k_i, i+1))
-
-        # Step 23 decrypt table values with Fernet and corresponding k_i symmetric key
-        table_i = results['pp_auc_tables'][i]
-        table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x)) # returns bytes
-        table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
-        df_list.append(table_i)
-    #dec_symm = decrypt(priv, pub, enc_symm)
-    concat_df = pd.concat(df_list)
-    concat_df.pop('Pre')
-    print('\n')
-    #print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
-    # Step 24
-    sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
-    #print(sort_df)
-    df_new_index = sort_df.reset_index()
-
-    # calculate TP / FN / TN and FP with paillier summation over rows
-    # Step 25
-    TP_values = []
-    FP_values = []
-
-    # Step 29
-    r1_A = randint(1, 100)  # random value between 1 to 100
-    r2_A = randint(1, 100)
-
-    #  generate M random numbers which sum up to 0
-    # Step 31
-    M = len(df_new_index)
-    #z_values = generate_random(M)
-    z_fast_values = generate_random_fast(M).astype(int)
-
-    D_1_vals = []
-    D_2_vals = []
-    D_3_vals = []
-
-    N_1_vals = []
-    N_2_vals = []
-    N_3_vals = []
-
-    for i in range(M):
-        TP_enc = sum_over_enc_series(df_new_index['Label'][:i+1], agg_pk)
-        print(decrypt(agg_sk, TP_enc))
-
-        TP_values.append(TP_enc)
-
-
-        neg_TP = e_mul_const(agg_pk, TP_enc, -1)  # subtraction of enc_tp_val
-
-        FP_enc = e_add(agg_pk, sum_over_enc_series(df_new_index['Flag'][:i + 1], agg_pk), neg_TP)
-        FP_values.append(FP_enc)
-
-        r1_i = randint(1, 100)
-        r2_i = randint(1, 100)
-
-        D_1 = e_add(agg_pk, TP_enc, encrypt(agg_pk, r1_A))
-        D_1_vals.append(D_1)
-
-        D_2 = e_add(agg_pk, FP_enc, encrypt(agg_pk, r2_A))
-        D_2_vals.append(D_2)
-
-        D_31 = e_mul_const(agg_pk, TP_enc, r2_A)
-        D_32 = e_mul_const(agg_pk, FP_enc, r1_A)
-        D_33 = r1_A * r2_A
-
-        D_3 = e_add(agg_pk, e_add(agg_pk, D_31, D_32), encrypt(agg_pk, D_33))
-        D_3_vals.append(D_3)
-
-        # Step 30
-        N_i_1 = e_add(agg_pk, TP_enc, encrypt(agg_pk, r1_i))
-        N_1_vals.append(N_i_1)
-
-        N_i_2 = e_add(agg_pk, FP_enc, encrypt(agg_pk, r2_i))
-        N_2_vals.append(N_i_2)
-
-        N_i_31 = e_mul_const(agg_pk, TP_enc, r2_i)
-        N_i_32 = e_mul_const(agg_pk, FP_enc, r1_i)
-        N_i_33 = e_mul_const(agg_pk, encrypt(agg_pk, r1_i), r2_i)
-        N_i_3 = e_add(agg_pk, e_add(agg_pk, N_i_31, N_i_32), N_i_33)
-        z_i = z_fast_values[i]
-
-        if z_i < 0:
-            enc_z_i = encrypt(agg_pk, abs(int(z_i)))
-            z_i_neg = e_mul_const(agg_pk, enc_z_i, agg_pk.n -1)
-            N_i_3_noise = e_add(agg_pk, N_i_3, enc_z_i)
-        else:
-            enc_z_i = encrypt(agg_pk, int(z_i))
-            N_i_3_noise = e_add(agg_pk, N_i_3, enc_z_i)
-
-        N_3_vals.append(N_i_3_noise)
-
-    # TODO test for validation of values! REMOVE in FINAL step
-    TP_dec = [decrypt(agg_sk, x) for x in TP_values]
-    FP_dec = [decrypt(agg_sk, x) for x in FP_values]
-    dec_label = [decrypt(agg_sk, x) for x in df_new_index["Label"]]
-    dec_flag = [decrypt(agg_sk, x) for x in df_new_index["Flag"]]
-    full_series_enc_label = df_new_index['Label']
-    full_series_enc_flag = df_new_index['Flag']
-    TP_A = sum_over_enc_series(full_series_enc_flag, agg_pk)  # summation over all flags
-    FP_A = sum_over_enc_series(full_series_enc_label, agg_pk)  # summation over all labels
-
-    #  denominator -> D currently only with multiplication of decrypted value
-    # D = e_mul_const(agg_pk, TP_A, decrypt(agg_sk, FP_A))
-    D = e_mul_const(agg_pk, TP_A, FP_A)
-    # nominator of sum for each TP * FP value
-    # N = sum TP * FP
-
-    # Randomized encoding
-    r1_A = randint(1, 100) # random value between 1 to 100
-    r2_A = randint(1, 100)
-    # calc D_1, D_2, D_3 components of D
-
-    # iterate over each M and regenerate rand r1_i and r2_i
-    for i in range(len(df_new_index)):
-        series_enc_label = df_new_index['Label'][:i+1]
-        series_enc_flag = df_new_index['Flag'][:i+1]
-
-
-
-    # add z values to each N_3
-    # and catch if z < 0 -> negative multipy by -1 and add to subtract
-    df_new_index["N_3"].apply(lambda x: add_noise(x,))
-
-    test_r1 = results['test_r1'][0]
-    test_r2 = results['test_r2'][0]
-    recon_df = df_new_index
-    recon_df['Dec_pre'] -= test_r2
-    recon_df['Dec_pre'] /= test_r1
-    recon_df['Label'] = dec_label
-    recon_df['Flag'] = dec_flag
-    print(recon_df)
-
-    return recon_df
+    print("PP-AUC: {0:.3f}".format(AUC))
+    exit(0)
 
 
 if __name__ == "__main__":
     stations = 3  # TODO adjust
-    subjects = 50  # TODO adjust
-    recreate = False # Set first True then false for running
+    subjects = 100  # TODO adjust
+    recreate = True # Set first True then false for running
     protocol = True
 
     train = Train(results='results.pkl')
@@ -795,10 +639,9 @@ if __name__ == "__main__":
     print('\n ------ \n PROXY STATION')
 
     # pp_auc = proxy_station() # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
-    proxy_station()  # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
+    proxy_station()
 
     # TODO itererate over stations and calcucale TP/(TP+FN) and TN/(TN+FP) for each threshold value
-    stations_auc(0)
-    exit(0)
+    # stations_auc(0)
     for i in range(stations):
         stations_auc(i)
