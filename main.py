@@ -13,6 +13,7 @@ from cryptography.fernet import Fernet
 import random
 #from phe import paillier
 import logging
+import copy
 
 
 import base64
@@ -96,8 +97,8 @@ def create_protocol_data():
     df2.to_pickle('./data/synthetic/protocol_data_s2.pkl')
 
     data_3 = {"Pre": [77, 88, 41, 39, 66],
-              "Label": [1, 0, 0, 0, 0], # AUC 0
-              #"Label": [1, 1, 0, 0, 0], # AUC 1
+              #"Label": [1, 0, 0, 0, 0], # AUC 0
+              "Label": [1, 1, 1, 0, 0], # AUC 1
               "Flag": [1, 0, 0, 1, 0]}
     df3 = pd.DataFrame(data_3, columns=['Pre', 'Label', 'Flag'])
     df3.to_pickle('./data/synthetic/protocol_data_s3.pkl')
@@ -181,7 +182,13 @@ def generate_keys(stations, results):
 
     # generate keys of aggregator
     sk, pk = generate_keypair(128)
-    pickle.dump(sk, open('./data/keys/agg_sk.p', 'wb'))
+    sk_1 = copy.copy(sk)
+    sk_2 = copy.copy(sk)
+    # simulate private key separation
+    del sk_1.x2
+    del sk_2.x1
+    pickle.dump(sk_1, open('./data/keys/agg_sk_1.p', 'wb'))
+    pickle.dump(sk_2, open('./data/keys/agg_sk_2.p', 'wb'))
     pickle.dump(pk, open('./data/keys/agg_pk.p', 'wb'))
     results['aggregator_paillier_pk'] = pk
 
@@ -381,7 +388,7 @@ def generate_random_fast(M):
 def compute_TP_FP_values(dataframe, agg_pk, length):
     TP_values = []
     FP_values = []
-    agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb'))
+    agg_sk = pickle.load(open('./data/keys/agg_sk_1.p', 'rb'))
 
     for i in range(length):
         TP_enc = sum_over_enc_series(dataframe['Label'][:i+1], agg_pk)
@@ -469,7 +476,7 @@ def proxy_station():
     # Step 21
     results = train.load_results()
     agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
-    agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb'))
+    agg_sk = pickle.load(open('./data/keys/agg_sk_1.p', 'rb'))
 
     # decrypt symmetric keys (k_stations)
     df_list = []
@@ -544,7 +551,7 @@ def proxy_station():
 
 def stations_auc(station):
     results = train.load_results()
-    agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb')) # todo split sk in sk_1 and sk_2
+    agg_sk = pickle.load(open('./data/keys/agg_sk_2.p', 'rb')) # todo split sk in sk_1 and sk_2
 
     logging.info('Station {}:\n'.format(station+1))
     # decrypt random components
@@ -556,7 +563,7 @@ def stations_auc(station):
     logging.info('D3 {}'.format(D3))
 
     iN1 = []
-    iN2 = [] 
+    iN2 = []
     iN3 = []
 
     for i in range(len(results['N1'])):
@@ -572,15 +579,16 @@ def stations_auc(station):
     N = 0
     for i in range(len(results['N1'])):
         N += ((iN1[i] * iN2[i]) + iN3[i])
-        #print(N)
+
     AUC = N / ((D1 * D2) + D3)
     logging.info('PP-AUC: {0:.3f}'.format(AUC))
-    exit(0)
+    print('Station {}'.format(station+1))
+    print('PP-AUC: {0:.3f}'.format(AUC))
+    return AUC
 
 
 if __name__ == "__main__":
     # Configuration
-
     logging.basicConfig(filename='pp-auc.log', level=logging.INFO)
     logging.info('Start PP-AUC execution')
 
@@ -626,6 +634,7 @@ if __name__ == "__main__":
     # compute AUC without encryption for proof of principal of pp_auc
     auc_gt = calculate_regular_auc(stations, protocol)
     logging.info('AUC value of ground truth {}'.format(auc_gt))
+    print('AUC value of ground truth {}'.format(auc_gt))
 
     for i in range(stations):
         if protocol:
@@ -651,4 +660,5 @@ if __name__ == "__main__":
     # TODO itererate over stations and calcucale TP/(TP+FN) and TN/(TN+FP) for each threshold value
     # stations_auc(0)
     for i in range(stations):
-        stations_auc(i)
+        AUC = stations_auc(i)
+    print(AUC == auc_gt)
