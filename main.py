@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from cryptography.fernet import Fernet
 import random
 #from phe import paillier
+import logging
 
 
 import base64
@@ -95,7 +96,8 @@ def create_protocol_data():
     df2.to_pickle('./data/synthetic/protocol_data_s2.pkl')
 
     data_3 = {"Pre": [77, 88, 41, 39, 66],
-              "Label": [1, 0, 0, 0, 0],
+              "Label": [1, 0, 0, 0, 0], # AUC 0
+              #"Label": [1, 1, 0, 0, 0], # AUC 1
               "Flag": [1, 0, 0, 1, 0]}
     df3 = pd.DataFrame(data_3, columns=['Pre', 'Label', 'Flag'])
     df3.to_pickle('./data/synthetic/protocol_data_s3.pkl')
@@ -208,14 +210,14 @@ def generate_keys(stations, results):
         f.write(public_pem)
 
     results['aggregator_rsa_pk'] = public_pem
-    print('Keys created for {} stations and aggregator station'.format(stations))
-    print('Added rsa and paillier pks of stations and aggregator to results')
+    logging.info('Keys created for {} stations and aggregator station'.format(stations))
+    logging.info('Added rsa and paillier pks of stations and aggregator to results')
 
     return results
 
 
 def encrypt_table(station_df, agg_pk, r1, r2, symm_key, station):
-    print('Start encrypting table with {} subjects from station {}'.format(len(station_df), station))
+    logging.info('Start encrypting table with {} subjects from station {}'.format(len(station_df), station))
     tic = time.perf_counter()
     # Just trivial implementation - improve with vectorizing and
     station_df["Pre"] *= r1
@@ -225,7 +227,7 @@ def encrypt_table(station_df, agg_pk, r1, r2, symm_key, station):
     station_df["Label"] = station_df["Label"].apply(lambda x: encrypt(agg_pk, x))
     station_df["Flag"] = station_df["Flag"].apply(lambda x: encrypt(agg_pk, x))
     toc = time.perf_counter()
-    print(f'Encryption time {toc - tic:0.4f} seconds')
+    logging.info(f'Encryption time {toc - tic:0.4f} seconds')
     return station_df
 
 
@@ -249,7 +251,7 @@ def load_rsa_pk(path):
 
 
 def encrypt_symm_key(station, symm_key):
-    print('Symmetric key of k_{} is: {}'.format(station, symm_key))
+    logging.info('Symmetric key of k_{} is: {}'.format(station, symm_key))
     rsa_agg_pk = load_rsa_pk('./data/keys/agg_rsa_public_key.pem')
     encrypted_symm_key = rsa_agg_pk.encrypt(symm_key,
                                             padding.OAEP(
@@ -262,7 +264,7 @@ def encrypt_symm_key(station, symm_key):
 
 
 def decrypt_symm_key(station, ciphertext):
-    print('Symmetric key of k_{} encrypted is: {}'.format(station, ciphertext))
+    logging.info('Symmetric key of k_{} encrypted is: {}'.format(station, ciphertext))
     rsa_agg_sk = load_rsa_sk('./data/keys/agg_rsa_private_key.pem')
     decrypted_symm_key = rsa_agg_sk.decrypt(
         ciphertext,
@@ -271,7 +273,7 @@ def decrypt_symm_key(station, ciphertext):
          algorithm=hashes.SHA256(),
          label=None
         ))
-    print('Symmetric key of k_{} decrypted is: {}'.format(station, decrypted_symm_key))
+    logging.info('Symmetric key of k_{} decrypted is: {}'.format(station, decrypted_symm_key))
     return decrypted_symm_key
 
 
@@ -310,8 +312,8 @@ def pp_auc_protocol(station_df, agg_paillier_pk, station=int):
             # Step 5
             prev_results['encrypted_r1'][i] = enc_r1
             prev_results['encrypted_r2'][i] = enc_r2
-            print('Store with pk of stations encrypted r1 value {} as {}'.format(r1, enc_r1))
-            print('Store with pk of stations encrypted r2 value {} as {}'.format(r2, enc_r2))
+            logging.info('Store with pk of stations encrypted r1 value {} as {}'.format(r1, enc_r1))
+            logging.info('Store with pk of stations encrypted r2 value {} as {}'.format(r2, enc_r2))
 
     else:
         # Step 7
@@ -320,10 +322,10 @@ def pp_auc_protocol(station_df, agg_paillier_pk, station=int):
         pk_s_i = pickle.load(open('./data/keys/s' + str(station) + '_paillier_pk.p', 'rb'))
         # Step 8
         dec_r1 = decrypt(sk_s_i, enc_r1)
-        print('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r1, dec_r1))
+        logging.info('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r1, dec_r1))
         enc_r2 = prev_results['encrypted_r2'][station-1]
         dec_r2 = decrypt(sk_s_i, enc_r2)
-        print('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r2, dec_r2))
+        logging.info('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r2, dec_r2))
 
         # Step 9 / 10
         symm_key = Fernet.generate_key()  # represents k_2 to k_n
@@ -390,7 +392,7 @@ def compute_TP_FP_values(dataframe, agg_pk, length):
         val = decrypt(agg_sk, TP_values[x])
         sum += val
         #print("List accessed TP: {}".format(val))
-    print("Exptected TP sum: ", sum)
+    logging.info('Expected TP sum: {}'.format(sum))
 
     for i in range(length):
         # subtraction of enc_tp_val
@@ -398,7 +400,7 @@ def compute_TP_FP_values(dataframe, agg_pk, length):
         #print("Pre FP: {}".format(decrypt(agg_sk, pre_FP_enc)))
         # TODO Fix FP - is wrong in computation
         #print("Pre TP: {}".format(decrypt(agg_sk, TP_values[i])))
-        FP_enc = e_add(agg_pk, pre_FP_enc, mul_const(agg_pk, TP_values[i], -1)) # subtraction
+        FP_enc = e_add(agg_pk, pre_FP_enc, mul_const(agg_pk, TP_values[i], -1)) # subtraction of TP_A from sum_flags
         FP_values.append(FP_enc)
         #print("FP: {}".format(decrypt(agg_sk, FP_enc)))
 
@@ -408,7 +410,7 @@ def compute_TP_FP_values(dataframe, agg_pk, length):
          val = decrypt(agg_sk, FP_values[x])
          sum += val
          #print("List accessed FP: {}".format(val))
-    print("Exptected FP sum: ", sum)
+    logging.info('Expected FP sum: {}'.format(sum))
     return TP_values, FP_values
 
 
@@ -475,7 +477,7 @@ def proxy_station():
         enc_k_i = results['encrypted_ks'][i]
         # Step 22
         dec_k_i = decrypt_symm_key(i, enc_k_i)
-        print('Decrypted k value {} of station {}'.format(dec_k_i, i + 1))
+        logging.info('Decrypted k value {} of station {}'.format(dec_k_i, i + 1))
 
         # Step 23 decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
@@ -485,7 +487,7 @@ def proxy_station():
 
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
-    print('\n')
+    logging.info('\n')
     #print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
     # Step 24
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
@@ -500,10 +502,10 @@ def proxy_station():
     # TP_A is summation of labels (TP)
     # FP_A is sum Flags (FP) - TP_A
     TP_A = sum_over_enc_series(TP_values, agg_pk)
-    print("TP_A:", decrypt(agg_sk, TP_A))
+    logging.info('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
 
     FP_A = e_add(agg_pk,  sum_over_enc_series(FP_values, agg_pk), mul_const(agg_pk,TP_A, -1))
-    print("FP_A :", decrypt(agg_sk, FP_A))
+    logging.info('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
 
     # Step 26
     a = randint(1, 100)
@@ -544,18 +546,17 @@ def stations_auc(station):
     results = train.load_results()
     agg_sk = pickle.load(open('./data/keys/agg_sk.p', 'rb')) # todo split sk in sk_1 and sk_2
 
-    print("Station {}: ".format(station+1))
+    logging.info('Station {}:\n'.format(station+1))
     # decrypt random components
-    results_copy = results
     D1 = decrypt2(agg_sk, results['D1'][0])
     D2 = decrypt2(agg_sk, results['D2'][0])
     D3 = decrypt2(agg_sk, results['D3'][0])
-    print("D1", D1)
-    print("D2", D2)
-    print("D3", D3)
+    logging.info('D1 {}'.format(D1))
+    logging.info('D2 {}'.format(D2))
+    logging.info('D3 {}'.format(D3))
 
     iN1 = []
-    iN2 = []
+    iN2 = [] 
     iN3 = []
 
     for i in range(len(results['N1'])):
@@ -567,21 +568,27 @@ def stations_auc(station):
              "iN2": iN2,
              "iN3": iN3}
 
-    print(iNs)
+    logging.info(iNs)
     N = 0
     for i in range(len(results['N1'])):
         N += ((iN1[i] * iN2[i]) + iN3[i])
         #print(N)
     AUC = N / ((D1 * D2) + D3)
-    print("PP-AUC: {0:.3f}".format(AUC))
+    logging.info('PP-AUC: {0:.3f}'.format(AUC))
     exit(0)
 
 
 if __name__ == "__main__":
+    # Configuration
+
+    logging.basicConfig(filename='pp-auc.log', level=logging.INFO)
+    logging.info('Start PP-AUC execution')
+
     stations = 3  # TODO adjust
-    subjects = 100  # TODO adjust
-    recreate = True # Set first True then false for running
-    protocol = True
+    subjects = 50  # TODO adjust
+
+    #recreate, protocol = True, True
+    recreate, protocol = False, True # Set first True then false for running
 
     train = Train(results='results.pkl')
     try:
@@ -593,9 +600,9 @@ if __name__ == "__main__":
     if recreate:
         try:
             shutil.rmtree('./data')
-            print('Removed previous results')
+            logging.info('Removed previous results')
         except Exception as e:
-            print('No previous files and results to remove')
+            logging.info('No previous files and results to remove')
 
         directories = ['./data', './data/keys', './data/synthetic', './data/encrypted', './data/pht_results']
         for dir in directories:
@@ -606,7 +613,7 @@ if __name__ == "__main__":
         else:
             create_fake_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
 
-        print("Created data and exits")
+        logging.info('Created data and exits')
         exit(0)
 
     results = train.load_results()
@@ -617,26 +624,26 @@ if __name__ == "__main__":
     agg_paillier_pk = results['aggregator_paillier_pk']
 
     # compute AUC without encryption for proof of principal of pp_auc
-    auc = calculate_regular_auc(stations, protocol)
-    print('AUC value of ground truth {}'.format(auc))
+    auc_gt = calculate_regular_auc(stations, protocol)
+    logging.info('AUC value of ground truth {}'.format(auc_gt))
 
     for i in range(stations):
         if protocol:
             stat_df = pickle.load(open('./data/synthetic/protocol_data_s' + str(i+1) + '.pkl', 'rb'))
         else:
             stat_df = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
-        print('\n')
+        logging.info('\n')
         results = pp_auc_protocol(stat_df, agg_paillier_pk, station=i+1)
         # remove at last station all encrypted noise values
         if i is stations - 1:
-            print('Remove paillier_pks and all encrypted r1 and r2 values')
+            logging.info('Remove paillier_pks and all encrypted r1 and r2 values')
             results.pop('aggregator_paillier_pk')
             results.pop('encrypted_r1')
             results.pop('encrypted_r2')
 
         train.save_results(results)  # saving results simulates push of image
-        print('Stored train results')
-    print('\n ------ \n PROXY STATION')
+        logging.info('Stored train results')
+    logging.info('\n ------ \n PROXY STATION')
 
     # pp_auc = proxy_station() # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
     proxy_station()
