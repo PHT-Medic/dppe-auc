@@ -6,7 +6,7 @@ from random import randint
 from paillier.paillier import *
 import os
 import shutil
-from typing import Union
+from typing import Union, Any
 from sklearn import metrics
 import matplotlib.pyplot as plt
 from cryptography.fernet import Fernet
@@ -14,7 +14,6 @@ import random
 #from phe import paillier
 import logging
 import copy
-
 
 import base64
 from cryptography.hazmat.backends import default_backend
@@ -97,8 +96,8 @@ def create_protocol_data():
     df2.to_pickle('./data/synthetic/protocol_data_s2.pkl')
 
     data_3 = {"Pre": [77, 88, 41, 39, 66],
-              #"Label": [1, 0, 0, 0, 0], # AUC 0
-              "Label": [1, 1, 1, 0, 0], # AUC 1
+              "Label": [1, 0, 0, 0, 0], # AUC 0
+              #"Label": [1, 1, 0, 0, 0], # AUC 1
               "Flag": [1, 0, 0, 1, 0]}
     df3 = pd.DataFrame(data_3, columns=['Pre', 'Label', 'Flag'])
     df3.to_pickle('./data/synthetic/protocol_data_s3.pkl')
@@ -115,7 +114,7 @@ def calculate_regular_auc(stations, protocol):
 
     # drop flag patients
     concat_df = pd.concat(lst_df)
-    filtered_df = concat_df[concat_df["Flag"] == 0] # remove flag patients
+    filtered_df = concat_df[concat_df["Flag"] == 1] # remove flag patients
     sort_df = filtered_df.sort_values(by='Pre', ascending=False)
 
     # iterate over sorted list
@@ -326,7 +325,6 @@ def pp_auc_protocol(station_df, agg_paillier_pk, station=int):
         # Step 7
         enc_r1 = prev_results['encrypted_r1'][station-1]
         sk_s_i = pickle.load(open('./data/keys/s' + str(station) + '_paillier_sk.p', 'rb'))
-        pk_s_i = pickle.load(open('./data/keys/s' + str(station) + '_paillier_pk.p', 'rb'))
         # Step 8
         dec_r1 = decrypt(sk_s_i, enc_r1)
         logging.info('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r1, dec_r1))
@@ -359,7 +357,8 @@ def create_fake_data(stations=int, samples=int, fake_patients=None):
                 "Flag": np.random.choice(np.concatenate([[1] * samples, [0] * fake_data_val]), samples+fake_data_val, replace=False)}
 
         df = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
-
+        # when Flag 0 Label cannot be 1!
+        df.loc[df["Flag"] == 0, "Label"] = 0
         df.to_pickle('./data/synthetic/data_s' + str(i+1) + '.pkl')
 
 
@@ -385,58 +384,51 @@ def generate_random_fast(M):
     return pick
 
 
-def compute_TP_FP_values(dataframe, agg_pk, length):
+def compute_tp_fp_values(dataframe, agg_pk, length):
     TP_values = []
     FP_values = []
     agg_sk = pickle.load(open('./data/keys/agg_sk_1.p', 'rb'))
 
     for i in range(length):
-        TP_enc = sum_over_enc_series(dataframe['Label'][:i+1], agg_pk)
-        TP_values.append(TP_enc)
+        TP_enc = sum_over_enc_series(dataframe['Label'][:i + 1], agg_pk)
+        #print(i)
         #print("TP: {}".format(decrypt(agg_sk, TP_enc)))
-    sum = 0
-    for x in range(length):
-        val = decrypt(agg_sk, TP_values[x])
-        sum += val
-        #print("List accessed TP: {}".format(val))
-    logging.info('Expected TP sum: {}'.format(sum))
+        TP_values.append(TP_enc)
 
-    for i in range(length):
         # subtraction of enc_tp_val
         pre_FP_enc = sum_over_enc_series(dataframe['Flag'][:i + 1], agg_pk)
-        #print("Pre FP: {}".format(decrypt(agg_sk, pre_FP_enc)))
-        # TODO Fix FP - is wrong in computation
-        #print("Pre TP: {}".format(decrypt(agg_sk, TP_values[i])))
-        FP_enc = e_add(agg_pk, pre_FP_enc, mul_const(agg_pk, TP_values[i], -1)) # subtraction of TP_A from sum_flags
+        #print('sum flags: {}'.format(decrypt(agg_sk, pre_FP_enc)))
+        FP_enc = e_add(agg_pk, pre_FP_enc , mul_const(agg_pk, TP_enc, -1)) # subtraction of TP_A from sum_flags
         FP_values.append(FP_enc)
         #print("FP: {}".format(decrypt(agg_sk, FP_enc)))
 
     # Uncomment to see behaviour
-    sum = 0
-    for x in range(length):
-         val = decrypt(agg_sk, FP_values[x])
-         sum += val
-         #print("List accessed FP: {}".format(val))
-    logging.info('Expected FP sum: {}'.format(sum))
+    #sum = 0
+    #for x in range(length):
+    #     val = decrypt(agg_sk, FP_values[x])
+    #     sum += val
+    #     #print("List accessed FP: {}".format(val))
+    #logging.info('Expected FP sum: {}'.format(sum))
     return TP_values, FP_values
 
 
-def calc_denominator(TP_A_mul, FP_A_mul, agg_pk):
+def calc_denominator(tp_a_mul, fp_a_mul, agg_pk):
     # Denominator
     r_1A = randint(1, 100)
     r_2A = randint(1, 100)
 
-    D1 = add_const(agg_pk, TP_A_mul, r_1A)
-    D2 = add_const(agg_pk, FP_A_mul, r_2A)
+    D1 = add_const(agg_pk, tp_a_mul, r_1A)
+    D2 = add_const(agg_pk, fp_a_mul, r_2A)
 
-    D3_1 = mul_const(agg_pk, TP_A_mul, r_2A)
-    D3_2 = mul_const(agg_pk, FP_A_mul, r_1A)
+    D3_1 = mul_const(agg_pk, tp_a_mul, r_2A)
+    D3_2 = mul_const(agg_pk, fp_a_mul, r_1A)
+
     D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A * r_2A))
 
     return D1, D2, D3
 
 
-def calc_nominator(TP_a, FP_a, agg_pk, length):
+def calc_nominator(tp_a, fp_a, agg_pk, length):
     # Nominator
     N_i1 = []
     N_i2 = []
@@ -449,8 +441,8 @@ def calc_nominator(TP_a, FP_a, agg_pk, length):
         r1_i = randint(1, 100)
         r2_i = randint(1, 100)
 
-        TP_i = TP_a[i]
-        FP_i = FP_a[i]
+        TP_i = tp_a[i]
+        FP_i = fp_a[i]
 
         N_i1.append(add_const(agg_pk, TP_i, r1_i))
         N_i2.append(add_const(agg_pk, FP_i, r2_i))
@@ -459,14 +451,7 @@ def calc_nominator(TP_a, FP_a, agg_pk, length):
         N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
         N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
         # Add z values to N_i3_a
-        z_i = z_values[i]
-        if z_i < 0:
-            # If noise is negative, multiply by -1 and add encrypted neg z value
-            enc_z_i = encrypt(agg_pk, abs(int(z_i)))
-            n_i_3_noise = e_add(agg_pk, N_i3_a, mul_const(agg_pk, enc_z_i, -1))
-        else:
-            n_i_3_noise = add_const(agg_pk, N_i3_a, z_i)
-
+        n_i_3_noise = add_const(agg_pk, N_i3_a, z_values[i])
         N_i3.append(n_i_3_noise)
 
     return N_i1, N_i2, N_i3
@@ -504,15 +489,16 @@ def proxy_station():
     # calculate TP / FN / TN and FP with paillier summation over rows
     # Step 25
     M = len(df_new_index) # TODO remove after denominator a
-    TP_values, FP_values = compute_TP_FP_values(df_new_index, agg_pk, M)
+    TP_values, FP_values = compute_tp_fp_values(df_new_index, agg_pk, M)
 
     # TP_A is summation of labels (TP)
-    # FP_A is sum Flags (FP) - TP_A
-    TP_A = sum_over_enc_series(TP_values, agg_pk)
+    TP_A = TP_values[-1]
     logging.info('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
-
-    FP_A = e_add(agg_pk,  sum_over_enc_series(FP_values, agg_pk), mul_const(agg_pk,TP_A, -1))
+    print('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
+    # FP_A is sum Flags (FP) - TP_A
+    FP_A = FP_values[-1]
     logging.info('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
+    print('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
 
     # Step 26
     a = randint(1, 100)
@@ -520,21 +506,20 @@ def proxy_station():
 
     # Step 27
     tp_a_multiplied = mul_const(agg_pk, TP_A, a)
-    FP_A_mul = mul_const(agg_pk, FP_A, b)
+    fp_a_multiplied = mul_const(agg_pk, FP_A, b)
 
+    #print("Multiplied by a {}".format(decrypt(agg_sk, tp_a_multiplied)))
     # Step 28
-    TP_is = []
-    FP_is = []
+    TP_is: Any = []
+    FP_is: Any = []
+
     # Multiply with a and b respectively
     for i in range(M):
-        TP_i = TP_values[i]
-        TP_is.append(mul_const(agg_pk, TP_i, a))
+        TP_is.append(mul_const(agg_pk, TP_values[i], a))
+        FP_is.append(mul_const(agg_pk, FP_values[i], b))
 
-        FP_i = FP_values[i]
-        FP_is.append(mul_const(agg_pk, FP_i, b))
-
-
-    D1, D2, D3 = calc_denominator(tp_a_multiplied, FP_A_mul, agg_pk)
+    # Step 29
+    D1, D2, D3 = calc_denominator(tp_a_multiplied, fp_a_multiplied, agg_pk)
 
     # Step 30
     N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, M)
@@ -550,14 +535,14 @@ def proxy_station():
     train.save_results(results)
 
 def stations_auc(station):
-    results = train.load_results()
+    train_results = train.load_results()
     agg_sk = pickle.load(open('./data/keys/agg_sk_2.p', 'rb')) # todo split sk in sk_1 and sk_2
 
     logging.info('Station {}:\n'.format(station+1))
     # decrypt random components
-    D1 = decrypt2(agg_sk, results['D1'][0])
-    D2 = decrypt2(agg_sk, results['D2'][0])
-    D3 = decrypt2(agg_sk, results['D3'][0])
+    D1 = decrypt2(agg_sk, train_results['D1'][0])
+    D2 = decrypt2(agg_sk, train_results['D2'][0])
+    D3 = decrypt2(agg_sk, train_results['D3'][0])
     logging.info('D1 {}'.format(D1))
     logging.info('D2 {}'.format(D2))
     logging.info('D3 {}'.format(D3))
@@ -566,25 +551,31 @@ def stations_auc(station):
     iN2 = []
     iN3 = []
 
-    for i in range(len(results['N1'])):
-        iN1.append(decrypt2(agg_sk, results['N1'][i]))
-        iN2.append(decrypt2(agg_sk, results['N2'][i]))
-        iN3.append(decrypt2(agg_sk, results['N3'][i]))
+    N = 0
+    for j in range(len(train_results['N1'])):
+        n_i1 = decrypt2(agg_sk, train_results['N1'][j])
+        n_i2 = decrypt2(agg_sk, train_results['N2'][j])
+        n_i3 = decrypt2(agg_sk, train_results['N3'][j])
+        iN1.append(n_i1)
+        iN2.append(n_i2)
+        iN3.append(n_i3)
+        N += ((n_i1 * n_i2) - n_i3)
 
     iNs = {"iN1": iN1,
              "iN2": iN2,
              "iN3": iN3}
 
     logging.info(iNs)
-    N = 0
-    for i in range(len(results['N1'])):
-        N += ((iN1[i] * iN2[i]) + iN3[i])
-
-    AUC = N / ((D1 * D2) + D3)
-    logging.info('PP-AUC: {0:.3f}'.format(AUC))
+    print('For debugging')
+    print('D1 {}'.format(D1))
+    print('D2 {}'.format(D2))
+    print('D3 {}'.format(D3))
+    print(iNs)
+    auc = N / ((D1 * D2) - D3)
+    logging.info('PP-AUC: {0:.3f}'.format(auc))
     print('Station {}'.format(station+1))
-    print('PP-AUC: {0:.3f}'.format(AUC))
-    return AUC
+    print('PP-AUC: {0:.3f}'.format(auc))
+    return auc
 
 
 if __name__ == "__main__":
@@ -596,7 +587,7 @@ if __name__ == "__main__":
     subjects = 50  # TODO adjust
 
     #recreate, protocol = True, True
-    recreate, protocol = False, True # Set first True then false for running
+    recreate, protocol = False, False # True # Set first True then false for running
 
     train = Train(results='results.pkl')
     try:
@@ -654,11 +645,9 @@ if __name__ == "__main__":
         logging.info('Stored train results')
     logging.info('\n ------ \n PROXY STATION')
 
-    # pp_auc = proxy_station() # TODO return list with TP, (TP+FN), TN and (TN+FP) for each threshold value
     proxy_station()
 
-    # TODO itererate over stations and calcucale TP/(TP+FN) and TN/(TN+FP) for each threshold value
-    # stations_auc(0)
-    for i in range(stations):
-        AUC = stations_auc(i)
-    print(AUC == auc_gt)
+    AUC = stations_auc(0)
+    #for i in range(stations):
+    #    AUC = stations_auc(i)
+    print('Equal? {}'.format(AUC == auc_gt))
