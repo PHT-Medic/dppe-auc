@@ -14,6 +14,7 @@ import random
 #from phe import paillier
 import logging
 import copy
+import json
 
 import base64
 from cryptography.hazmat.backends import default_backend
@@ -377,7 +378,6 @@ def sum_over_enc_series(encrypted_series, agg_pk):
 
 
 def generate_random_fast(M):
-    import numpy as np, numpy.random
     pick = np.random.dirichlet(np.ones(M-1), size=1)
     pick *= 100
     pick = np.insert(pick.round()[0], 1, -sum(pick.round()[0]))
@@ -403,19 +403,20 @@ def compute_tp_fp_values(dataframe, agg_pk, length):
         #print("FP: {}".format(decrypt(agg_sk, FP_enc)))
 
     # Uncomment to see behaviour
-    #sum = 0
-    #for x in range(length):
-    #     val = decrypt(agg_sk, FP_values[x])
-    #     sum += val
-    #     #print("List accessed FP: {}".format(val))
+    sum = 0
+    for x in range(length):
+         val = decrypt(agg_sk, TP_values[x])
+         sum += val
+         print("List accessed TP: {}".format(val))
+         print("List accessed FP: {}".format(decrypt(agg_sk, FP_values[x])))
     #logging.info('Expected FP sum: {}'.format(sum))
     return TP_values, FP_values
 
 
 def calc_denominator(tp_a_mul, fp_a_mul, agg_pk):
     # Denominator
-    r_1A = randint(1, 100)
-    r_2A = randint(1, 100)
+    r_1A = 1 # randint(1, 100)
+    r_2A = 1 # randint(1, 100)
 
     D1 = add_const(agg_pk, tp_a_mul, r_1A)
     D2 = add_const(agg_pk, fp_a_mul, r_2A)
@@ -428,18 +429,38 @@ def calc_denominator(tp_a_mul, fp_a_mul, agg_pk):
     return D1, D2, D3
 
 
+def z_values(n):
+    l = random.sample(range(-n, n), k=(n - 1))
+    return l + [-sum(l)]
+
 def calc_nominator(tp_a, fp_a, agg_pk, length):
     # Nominator
     N_i1 = []
     N_i2 = []
     N_i3 = []
 
+    agg_sk = pickle.load(open('./data/keys/agg_sk_1.p', 'rb'))
     # Step 31
     #  generate M random numbers which sum up to 0
-    z_values = generate_random_fast(length).astype(int)
+    #tic = time.perf_counter()
+    #z_values_fast = generate_random_fast(length).astype(int)
+    #print(z_values_fast)
+    #print(sum(z_values_fast))
+    #toc = time.perf_counter()
+    #print(f'Generation time fast time {toc - tic:0.4f} seconds')
+
+    tic = time.perf_counter()
+    Z_values = z_values(length)
+    #print(Z_values)
+    #print(sum(Z_values))
+    toc = time.perf_counter()
+    print(f'Generation time naive time {toc - tic:0.4f} seconds')
+    noise_final = []
+    n_i_index = []
+    n_i3_neg = []
     for i in range(length):
-        r1_i = randint(1, 100)
-        r2_i = randint(1, 100)
+        r1_i = 1 # randint(1, 100)
+        r2_i = 1 #randint(1, 100)
 
         TP_i = tp_a[i]
         FP_i = fp_a[i]
@@ -450,10 +471,27 @@ def calc_nominator(tp_a, fp_a, agg_pk, length):
         N_i3_1 = mul_const(agg_pk, TP_i, r2_i)
         N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
         N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
+        Ni3dec = decrypt(agg_sk, N_i3_a)
+        #print("Dec_Ni3",Ni3dec)
         # Add z values to N_i3_a
-        n_i_3_noise = add_const(agg_pk, N_i3_a, z_values[i])
-        N_i3.append(n_i_3_noise)
+        #print(Z_values[i])
+        #n_i_3_noise = N_i3_a
 
+        if Ni3dec + Z_values[i] >= 0:
+            n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
+        else:
+            # if Ni_3 gets negative
+            noise_final.append(Z_values[i])
+            n_i_index.append(i)
+            n_i3_neg.append(Ni3dec)
+            n_i_3_noise = Ni3dec + Z_values[i]
+        N_i3.append(N_i3_a)
+        #print("Dec_Ni3_noise", decrypt(agg_sk, n_i_3_noise))
+    #print("Dec_Ni3", [decrypt(agg_sk, x) for x in N_i3_a])
+    #print("Sum ", sum(noise_final))
+    #print("Noise ", noise_final)
+    #print("Index ", n_i_index)
+    #print("Ni ", n_i3_neg)
     return N_i1, N_i2, N_i3
 
 
@@ -501,14 +539,14 @@ def proxy_station():
     print('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
 
     # Step 26
-    a = randint(1, 100)
-    b = randint(1, 100)
+    a = 1 #randint(1, 100)
+    b = 1 #randint(1, 100)
 
     # Step 27
     tp_a_multiplied = mul_const(agg_pk, TP_A, a)
     fp_a_multiplied = mul_const(agg_pk, FP_A, b)
 
-    #print("Multiplied by a {}".format(decrypt(agg_sk, tp_a_multiplied)))
+    #print("Multiplied by disa {}".format(decrypt(agg_sk, tp_a_multiplied)))
     # Step 28
     TP_is: Any = []
     FP_is: Any = []
@@ -524,25 +562,78 @@ def proxy_station():
     # Step 30
     N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, M)
 
+    # control pp-auc
+    D1_dec = decrypt(agg_sk, D1)
+    D2_dec = decrypt(agg_sk, D2)
+    D3_dec = decrypt(agg_sk, D3)
+    D = ((D1_dec * D2_dec) - D3_dec)
+
+    iN1 = []
+    iN2 = []
+    iN3 = []
+    N = encrypt(agg_pk, 0)
+    for j in range(len(N_i1)):
+        n_i1 = decrypt(agg_sk, N_i1[j])
+        n_i2 = decrypt(agg_sk, N_i2[j])
+        iN1.append(n_i1)
+        iN2.append(n_i2)
+
+        n_i12 = encrypt(agg_pk, n_i1 * n_i2)
+
+        if isinstance(N_i3[j], list):
+            n_i3 = decrypt(agg_sk, N_i3[j])
+            iN3.append(n_i3)
+            Ni = e_add(agg_pk, n_i12, mul_const(agg_pk, encrypt(agg_pk, n_i3), -1))
+            N = e_add(agg_pk, N, Ni)
+        else:
+            n_i3  = N_i3[j]
+            Ni = e_add(agg_pk, n_i12, encrypt(agg_pk, n_i3))
+            iN3.append(n_i3)
+
+        #n_i12 = n_i1 * n_i2
+
+    dec_Ni = decrypt(agg_sk, N)
+        #N += (n_i12 - n_i3)
+        #print("Ni",dec_Ni)
+        #print("Ni1", n_i1)
+        #print("Ni2", n_i2)
+        #print("Ni3", n_i3)
+    N_s = []
+    for u in range(len(iN1)):
+        print((iN1[u] * iN2[u]) + iN3[u])
+        N_s.append((iN1[u] * iN2[u]) + iN3[u])
+    N_dec = dec_Ni
+    print("N dec", N_dec)
+    print("N_s",  N_s)
+    print("D", D)
+    auc = sum(N_s) / D
+    print("AUC", auc)
     # partial decrypt and save to train
     results["D1"].append(proxy_decrypt(agg_sk, D1))
     results["D2"].append(proxy_decrypt(agg_sk, D2))
     results["D3"].append(proxy_decrypt(agg_sk, D3))
     results["N1"] = [proxy_decrypt(agg_sk, x) for x in N_i1]
     results["N2"] = [proxy_decrypt(agg_sk, x) for x in N_i2]
+    for i in range(len(N_i3)):
+        if isinstance(N_i3[i], list):
+            pass
+        else:
+            N_i3[i] = encrypt(agg_pk, N_i3[i])
     results["N3"] = [proxy_decrypt(agg_sk, x) for x in N_i3]
 
     train.save_results(results)
 
 def stations_auc(station):
     train_results = train.load_results()
-    agg_sk = pickle.load(open('./data/keys/agg_sk_2.p', 'rb')) # todo split sk in sk_1 and sk_2
-
+    agg_sk_2 = pickle.load(open('./data/keys/agg_sk_2.p', 'rb')) # todo split sk in sk_1 and sk_2
+    agg_pk = pickle.load(open('./data/keys/agg_pk.p', 'rb'))
     logging.info('Station {}:\n'.format(station+1))
-    # decrypt random components
-    D1 = decrypt2(agg_sk, train_results['D1'][0])
-    D2 = decrypt2(agg_sk, train_results['D2'][0])
-    D3 = decrypt2(agg_sk, train_results['D3'][0])
+    print('Station {}'.format(station+1))
+
+    # decrypt random components D1, D2, D3, Ni1, Ni2, Ni3
+    D1 = decrypt2(agg_sk_2, train_results['D1'][0])
+    D2 = decrypt2(agg_sk_2, train_results['D2'][0])
+    D3 = decrypt2(agg_sk_2, train_results['D3'][0])
     logging.info('D1 {}'.format(D1))
     logging.info('D2 {}'.format(D2))
     logging.info('D3 {}'.format(D3))
@@ -553,13 +644,20 @@ def stations_auc(station):
 
     N = 0
     for j in range(len(train_results['N1'])):
-        n_i1 = decrypt2(agg_sk, train_results['N1'][j])
-        n_i2 = decrypt2(agg_sk, train_results['N2'][j])
-        n_i3 = decrypt2(agg_sk, train_results['N3'][j])
+        n_i1 = decrypt2(agg_sk_2, train_results['N1'][j])
+        n_i2 = decrypt2(agg_sk_2, train_results['N2'][j])
+        n_i3 = decrypt2(agg_sk_2, train_results['N3'][j])
         iN1.append(n_i1)
         iN2.append(n_i2)
         iN3.append(n_i3)
+
+        n_i12 = encrypt(agg_pk, n_i1 * n_i2)
+        Ni = e_add(agg_pk, n_i12 , mul_const(agg_pk, encrypt(agg_pk, n_i3), -1))
+        dec_Ni = decrypt(agg_sk_2, Ni)
+        #N += (n_i12 - n_i3)
         N += ((n_i1 * n_i2) - n_i3)
+        #N += ((n_i1 * n_i2) - n_i3)
+        #print(N)
 
     iNs = {"iN1": iN1,
              "iN2": iN2,
@@ -570,10 +668,12 @@ def stations_auc(station):
     print('D1 {}'.format(D1))
     print('D2 {}'.format(D2))
     print('D3 {}'.format(D3))
-    print(iNs)
-    auc = N / ((D1 * D2) - D3)
+    print(json.dumps(iNs, sort_keys=True))
+    D = ((D1 * D2) - D3)
+    print(dec_Ni)
+    print(D)
+    auc = dec_Ni / D
     logging.info('PP-AUC: {0:.3f}'.format(auc))
-    print('Station {}'.format(station+1))
     print('PP-AUC: {0:.3f}'.format(auc))
     return auc
 
@@ -586,8 +686,8 @@ if __name__ == "__main__":
     stations = 3  # TODO adjust
     subjects = 50  # TODO adjust
 
-    #recreate, protocol = True, True
-    recreate, protocol = False, False # True # Set first True then false for running
+    #recreate, protocol = False, False
+    recreate, protocol = False, True # True # Set first True then false for running
 
     train = Train(results='results.pkl')
     try:
