@@ -2,21 +2,20 @@ import pandas as pd
 import numpy as np
 import pickle
 import time
-from random import randint
-from paillier.paillier import *
 import os
 import shutil
-from typing import Union, Any
-from sklearn import metrics
 import matplotlib.pyplot as plt
-from cryptography.fernet import Fernet
 import random
-#from phe import paillier
+
 import logging
 import copy
 import json
-
 import base64
+from typing import Union, Any
+from sklearn import metrics
+from random import randint
+from paillier.paillier import *
+from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
@@ -314,8 +313,8 @@ def pp_auc_protocol(station_df, station=int):
     agg_pk = prev_results['aggregator_paillier_pk']
     if station == 1:
         # Step 2
-        r1 = 1#randint(1, 100) # random value between 1 to 100
-        r2 = 1#randint(1, 100)
+        r1 = randint(1, 100) # random value between 1 to 100
+        r2 = randint(1, 100)
         prev_results['test_r1'][0] = r1
         prev_results['test_r2'][0] = r2
         symmetric_key = Fernet.generate_key()  # represents k1
@@ -413,51 +412,48 @@ def compute_tp_fp_values(dataframe, agg_pk, length):
     TP_values = []
     FP_values = []
     agg_sk = pickle.load(open('./data/keys/agg_sk_1.p', 'rb'))
-    pre_FP = []
-    # prev_FP = encrypt(agg_pk, 0)
+    prev_FP = [encrypt(agg_pk, 0)]
     for i in range(length):
         TP_enc = sum_over_enc_series(dataframe['Label'][:i + 1], agg_pk)
         #print(i)
         #print("TP: {}".format(decrypt(agg_sk, TP_enc)))
         TP_values.append(TP_enc)
 
-        # subtraction of enc_tp_val
-        pre_FP_enc = sum_over_enc_series(dataframe['Flag'][:i + 1], agg_pk)
-        #FP_i = e_add(agg_pk, pre_FP_enc , mul_const(agg_pk, prev_FP, -1))
-        #prev_FP = FP_i
-        pre_FP.append(pre_FP_enc)
+        # subtraction of
+        sum_flags = sum_over_enc_series(dataframe['Flag'][:i + 1], agg_pk)
+        #FP_i = e_add(agg_pk, sum_flags , mul_const(agg_pk, prev_FP[-1], -1))
+        #prev_FP.append(FP_i)
         #print('sum flags: {}'.format(decrypt(agg_sk, pre_FP_enc)))
-        FP_enc = e_add(agg_pk, pre_FP_enc , mul_const(agg_pk, TP_enc, -1)) # subtraction of TP_i from FP_i
+        FP_enc = e_add(agg_pk, sum_flags , mul_const(agg_pk, TP_enc, -1)) # subtraction of TP_i from FP_i
         FP_values.append(FP_enc)
         #print("FP: {}".format(decrypt(agg_sk, FP_enc)))
 
     # Uncomment to see behaviour
-    n = 0
-    for x in range(length):
-         val1 = decrypt(agg_sk, TP_values[x])
-         val2 = decrypt(agg_sk, FP_values[x])
-         n += val1 * val2
+    #n = 0
+    #for x in range(length):
+    #     val1 = decrypt(agg_sk, TP_values[x])
+    #     val2 = decrypt(agg_sk, FP_values[x])
+    #     n += val1 * val2
          #print("List accessed TP: {}".format(val))
          #print("List accessed FP: {}".format(decrypt(agg_sk, FP_values[x])))
-    logging.info('Expected N: {}'.format(n))
+    #logging.info('Expected N: {}'.format(n))
     #print('Expected N: {}'.format(n))
-    #print([decrypt(agg_sk, x) for x in FP_values])
-    #FP_copy = [x - y for x, y in zip([decrypt(agg_sk, x) for x in FP_values], [decrypt(agg_sk, x) for x in FP_values][1:])]
+
     #print(FP_copy)
     #FP_copy.insert(0, 0)
     #return TP_values, [encrypt(agg_pk, x)for x in FP_copy]
     #y_list = [decrypt(agg_sk, x) for x in dataframe['Label']]
     #y = decrypt(agg_sk, y_list)
-    test = [encrypt(agg_pk, x) for x in [0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 3, 0, 3, 0, 3]]
-    print("TP:",[decrypt(agg_sk, x) for x in TP_values])
-    print("FPi - FPi-1:", [decrypt(agg_sk, x) for x in test])
+
+    #print("TP:",[decrypt(agg_sk, x) for x in TP_values])
+    #print("FPi - FPi-1:", [decrypt(agg_sk, x) for x in test])
     #print("FP:",[decrypt(agg_sk, x)for x in FP_values])
     #pred = dataframe["Dec_pre"]
     #fpr, tpr, thesholds = metrics.roc_curve(y_list, pred, pos_label=1)
     #auc = metrics.auc(fpr, tpr)
     #print("GT AUC: ", auc)
 
-    return TP_values, test
+    return TP_values, FP_values
 
 
 def calc_denominator(tp_a_mul, fp_a_mul, agg_pk):
@@ -465,8 +461,8 @@ def calc_denominator(tp_a_mul, fp_a_mul, agg_pk):
     Calculate denominator parts given multiplied TP and FP values
     """
     # Denominator
-    r_1A = 1#randint(1, 100)
-    r_2A = 1#randint(1, 100)
+    r_1A = randint(1, 100)
+    r_2A = randint(1, 100)
 
     D1 = add_const(agg_pk, tp_a_mul, r_1A)
     D2 = add_const(agg_pk, fp_a_mul, r_2A)
@@ -509,19 +505,14 @@ def calc_nominator(tp_a, fp_a, agg_pk, length):
 
     tic = time.perf_counter()
     Z_values = z_values(length)
-    print("Z:", Z_values)
-    print("Sum Z:", sum(Z_values))
+    #print("Z:", Z_values)
+    #print("Sum Z:", sum(Z_values))
     toc = time.perf_counter()
-    print(f'Generation time noise Z took {toc - tic:0.4f} seconds')
-    #small_z = randint(1,length)
-    #zeros = [0, small_z]
+    #print(f'Generation time noise Z took {toc - tic:0.4f} seconds')
 
-    #noise_final = []
-    #n_i_index = []
-    #n_i3_neg = []
     for i in range(length):
-        r1_i = 1#randint(1, 100)
-        r2_i = 1#randint(1, 100)
+        r1_i = randint(1, 100)
+        r2_i = randint(1, 100)
 
         TP_i = tp_a[i]
         FP_i = fp_a[i]
@@ -550,7 +541,7 @@ def calc_nominator(tp_a, fp_a, agg_pk, length):
             #n_i_3_noise = Ni3dec + Z_values[i]
         N_i3.append(n_i_3_noise)
         #print("Dec_Ni3_noise", decrypt(agg_sk, n_i_3_noise))
-    print("N3 noise free", [decrypt(agg_sk, x) for x in N_i3_noise_free])
+    #print("N3 noise free", [decrypt(agg_sk, x) for x in N_i3_noise_free])
     #print("Sum ", sum(noise_final))
     #print("Noise ", noise_final)
     #print("Index ", n_i_index)
@@ -598,16 +589,17 @@ def proxy_station():
     # TP_A is summation of labels (TP)
     TP_A = TP_values[-1]
     logging.info('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
-    print('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
+    #print('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
+
     # FP_A is sum Flags (FP) - TP_A
     FP_A = FP_values[-1]
     logging.info('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
-    print('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
-    print('Expected D: {}'.format(decrypt(agg_sk, FP_A) * decrypt(agg_sk, TP_A)))
+    #print('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
+    #print('Expected D: {}'.format(decrypt(agg_sk, FP_A) * decrypt(agg_sk, TP_A)))
 
     # Step 26
-    a = 1# randint(1, 100)
-    b = 1#randint(1, 100)
+    a = randint(1, 100)
+    b = randint(1, 100)
 
     # Step 27
     tp_a_multiplied = mul_const(agg_pk, TP_A, a)
@@ -615,13 +607,17 @@ def proxy_station():
 
     #print("Multiplied by disa {}".format(decrypt(agg_sk, tp_a_multiplied)))
     # Step 28
+    FP_values.insert(0, encrypt(agg_pk, 0))
+    dFP = [e_add(agg_pk, FP_values[i+1], mul_const(agg_pk, FP_values[i], -1)) for i in range(len(FP_values)-1)]# subtraction of FP_i-1 from FP_i
+    FP_values.pop(0)
+
     TP_is: Any = []
     FP_is: Any = []
 
     # Multiply with a and b respectively
     for i in range(M):
         TP_is.append(mul_const(agg_pk, TP_values[i], a))
-        FP_is.append(mul_const(agg_pk, FP_values[i], b))
+        FP_is.append(mul_const(agg_pk, dFP[i], b)) # absolute value of difference
 
     # Step 29
     D1, D2, D3 = calc_denominator(tp_a_multiplied, fp_a_multiplied, agg_pk)
@@ -629,67 +625,12 @@ def proxy_station():
     # Step 30
     N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, M)
 
-    # control pp-auc
-    # D1_dec = decrypt(agg_sk, D1)
-    # D2_dec = decrypt(agg_sk, D2)
-    # D3_dec = decrypt(agg_sk, D3)
-    # D = ((D1_dec * D2_dec) - D3_dec)
-    #
-    # iN1 = []
-    # iN2 = []
-    # iN3 = []
-    # N = encrypt(agg_pk, 0)
-    # for j in range(len(N_i1)):
-    #     n_i1 = decrypt(agg_sk, N_i1[j])
-    #     n_i2 = decrypt(agg_sk, N_i2[j])
-    #     iN1.append(n_i1)
-    #     iN2.append(n_i2)
-    #
-    #     n_i12 = encrypt(agg_pk, n_i1 * n_i2)
-    #
-    #     if isinstance(N_i3[j], list):
-    #         n_i3 = decrypt(agg_sk, N_i3[j])
-    #         iN3.append(n_i3)
-    #         Ni = e_add(agg_pk, n_i12, mul_const(agg_pk, encrypt(agg_pk, n_i3), -1))
-    #         N = e_add(agg_pk, N, Ni)
-    #     else:
-    #         n_i3  = N_i3[j]
-    #         Ni = e_add(agg_pk, n_i12, encrypt(agg_pk, n_i3))
-    #         N = e_add(agg_pk, N, Ni)
-    #         iN3.append(n_i3)
-
-        #n_i12 = n_i1 * n_i2
-
-    #dec_Ni = decrypt(agg_sk, N)
-        #N += (n_i12 - n_i3)
-        #print("Ni",dec_Ni)
-        #print("Ni1", n_i1)
-        #print("Ni2", n_i2)
-        #print("Ni3", n_i3)
-    #N_s = []
-    #for u in range(len(iN1)):
-        #print((iN1[u] * iN2[u]) - iN3[u])
-    #    N_s.append((iN1[u] * iN2[u]) - iN3[u])
-    #N_dec = decrypt(agg_sk, N)
-
-    #print("N dec", N_dec)
-    #print("N_s",  N_s)
-    #print("N", sum(N_s))
-    #print("D", D)
-    #auc = sum(N_s) / D
-    #print("AUC", auc)
     # partial decrypt and save to train
     results["D1"].append(proxy_decrypt(agg_sk, D1))
     results["D2"].append(proxy_decrypt(agg_sk, D2))
     results["D3"].append(proxy_decrypt(agg_sk, D3))
     results["N1"] = [proxy_decrypt(agg_sk, x) for x in N_i1]
     results["N2"] = [proxy_decrypt(agg_sk, x) for x in N_i2]
-    # workaround
-    #for i in range(len(N_i3)):
-    #    if isinstance(N_i3[i], list):
-    #        pass
-    #    else:
-    #        N_i3[i] = encrypt(agg_pk, N_i3[i])
     results["N3"] = [proxy_decrypt(agg_sk, x) for x in N_i3]
 
     train.save_results(results)
@@ -751,17 +692,17 @@ def stations_auc(station):
     logging.info(iNs)
     #print('For debugging')
 
-    print('D1 {}'.format(D1))
-    print('D2 {}'.format(D2))
-    print('D3 {}'.format(D3))
-    print(json.dumps(iNs, sort_keys=True))
+    #print('D1 {}'.format(D1))
+    #print('D2 {}'.format(D2))
+    #print('D3 {}'.format(D3))
+    #print(json.dumps(iNs, sort_keys=True))
     D = ((D1 * D2) - D3)
-    print("Ni ", Ni)
-    print("N ",N)
-    print("D ", D)
+    #print("Ni ", Ni)
+    #print("N ",N)
+    #print("D ", D)
     auc = N / D
     logging.info('PP-AUC: {0:.3f}'.format(auc))
-    print('PP-AUC: {0:.3f}'.format(auc))
+    print('PP-AUC: {}'.format(auc))
     return auc
 
 
@@ -773,7 +714,7 @@ if __name__ == "__main__":
     stations = 3  # TODO adjust
     subjects = 50  # TODO adjust
 
-    recreate, protocol = False, True # , False#, True
+    recreate, protocol = False, False # , False#, True
     #recreate, protocol = False, True # True # Set first True then false for running
 
     train = Train(results='results.pkl')
@@ -810,7 +751,7 @@ if __name__ == "__main__":
     # compute AUC without encryption for proof of principal of pp_auc
     auc_gt = calculate_regular_auc(stations, protocol)
     logging.info('AUC value of ground truth {}'.format(auc_gt))
-    print('AUC value of ground truth {}'.format(auc_gt))
+    print('AUC value of GT {}'.format(auc_gt))
 
     for i in range(stations):
         if protocol:
@@ -836,3 +777,4 @@ if __name__ == "__main__":
     #for i in range(stations):
     #    AUC = stations_auc(i)
     print('Equal? {}'.format(AUC == auc_gt))
+    print('Difference GT to pp-AUC: ', auc_gt-AUC)
