@@ -131,7 +131,7 @@ def calculate_regular_auc(stations, protocol):
 
     concat_df = pd.concat(lst_df)
     #print('All unique Pre? ', concat_df["Pre"].is_unique)
-    print('Use data of {} stations. {} subjects (including flag subjects) '.format(stations, len(concat_df)))
+    print('Use data of {} stations. Total of {} subjects (including flag subjects) '.format(stations, len(concat_df)))
     filtered_df = concat_df[concat_df["Flag"] == 1] # remove flag patients
     sort_df = filtered_df.sort_values(by='Pre', ascending=False)
     #sort_df = concat_df.sort_values(by='Pre', ascending=False)
@@ -553,30 +553,23 @@ def proxy_station():
     tp_a_multiplied = mul_const(agg_pk, TP_A, a)
     fp_a_multiplied = mul_const(agg_pk, FP_A, b)
 
-    #print("Multiplied by disa {}".format(decrypt(agg_sk, tp_a_multiplied)))
-    # Step 28
+    # Tie condition differences between TP and FP
     FP_values.insert(0, encrypt(agg_pk, 0))
-    dFP = [e_add(agg_pk, FP_values[i+1], mul_const(agg_pk, FP_values[i], -1)) for i in
-           range(len(FP_values)-1)] # subtraction of FP_i-1 from FP_i
+    # subtraction of FP_i-1 from FP_i for N2
+    dFP = [e_add(agg_pk, FP_values[i+1], mul_const(agg_pk, FP_values[i], -1)) for i in range(len(FP_values) - 1)]
     FP_values.pop(0)
 
     TP_values.insert(0, encrypt(agg_pk, 0))
-    dTP = [e_add(agg_pk, TP_values[i + 1],  TP_values[i]) for i in
-           range(len(TP_values) - 1)]  # subtraction of TP_i-1 from TP_i
+    # addition of TP_i-1 to TP_i for N1
+    dTP = [e_add(agg_pk, TP_values[i + 1],  TP_values[i]) for i in range(len(TP_values) - 1)]
     TP_values.pop(0)
-    sum_n = []
-    for i in range(M):
-        sub_FP = dFP[i]
-        mul = 0
-        sum_n.append(mul)
-        # tie condition here sum TPi * (FPi- -FPi-1) + sum TPi-1 * ((FPi- -FPi-1))
 
     TP_is: Any = []
     FP_is: Any = []
-
+    # Step 28
     # Multiply with a and b respectively
     for i in range(M):
-        TP_is.append(mul_const(agg_pk, TP_values[i], a))
+        TP_is.append(mul_const(agg_pk, dTP[i], a)) # use dTP for nominator in tie condition
         FP_is.append(mul_const(agg_pk, dFP[i], b))
 
     # Step 29
@@ -663,7 +656,7 @@ def stations_auc(station):
     if D == 0:
         auc = 0
     else:
-        auc = N / D
+        auc = (N / D) / 2
     logging.info('PP-AUC: {0:.3f}'.format(auc))
     print('PP-AUC: {}'.format(auc))
     return auc
@@ -676,11 +669,11 @@ if __name__ == "__main__":
 
     stations = 3  # TODO adjust
 
-    recreate, protocol = False, False # , False#, True
+    protocol = False # if protocol true, then: subject_list = [20]
+    #subject_list = [20]
+    subject_list = [5, 15, 50, 200]
 
     train = Train(results='results.pkl')
-
-    subject_list = [5, 15, 50, 200]
 
     for subjects in subject_list:
         print("Remove previous results")
@@ -747,11 +740,11 @@ if __name__ == "__main__":
 
 
         t1 = time.perf_counter()
-        AUC = stations_auc(0)
+        auc_pp = stations_auc(0)
         t2 = time.perf_counter()
-        print(f'Final execution time at station {t2 - t1:0.4f} seconds')
+        print(f'Final AUC execution time at station {t2 - t1:0.4f} seconds')
         #for i in range(stations):
         #    AUC = stations_auc(i)
-        print('Equal GT? {}'.format(AUC == auc_gt))
-        print('Difference pp-AUC to GT: ', auc_gt-AUC)
+        print('Equal GT? {}'.format(auc_gt == auc_pp))
+        print('Difference pp-AUC to GT: ', auc_gt - auc_pp)
         print('\n')
