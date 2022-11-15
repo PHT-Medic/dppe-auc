@@ -131,32 +131,37 @@ def calculate_regular_auc(stations, protocol):
 
     concat_df = pd.concat(lst_df)
     #print('All unique Pre? ', concat_df["Pre"].is_unique)
-    print('Use data of {} stations. Total of {} subjects (including flag subjects) '.format(stations, len(concat_df)))
+    print('Use data from {} stations. Total of {} subjects (including flag subjects) '.format(stations, len(concat_df)))
     filtered_df = concat_df[concat_df["Flag"] == 1] # remove flag patients
     sort_df = filtered_df.sort_values(by='Pre', ascending=False)
     #sort_df = concat_df.sort_values(by='Pre', ascending=False)
-
+    #print("Data Predi: {}".format(sort_df["Pre"].to_list()))
+    #print("Data Label: {}".format(sort_df["Label"].to_list()))
+    #print("Data Flags: {}".format(sort_df["Flag"].to_list()))
     # iterate over sorted list
     # auc = 0.0
     # height = 0.0
     sort_df["Pre"] = sort_df["Pre"] / 100
     y = sort_df["Label"]
     pred = sort_df["Pre"]
-    fpr, tpr, _ = metrics.roc_curve(y, pred, pos_label=1)
-    auc = metrics.auc(fpr, tpr)
 
-    plt.figure()
-    lw = 1
-    plt.plot(fpr, tpr, color='darkorange',
-             lw=lw, label='ROC curve (area = %0.2f)' % metrics.auc(fpr, tpr))
-    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC of ground truth')
-    plt.legend(loc="lower right")
-    plt.show()
+    #fpr, tpr, _ = metrics.roc_curve(y, pred, pos_label=1)
+    #auc = metrics.auc(fpr, tpr)
+    auc = metrics.roc_auc_score(y, pred)
+
+
+    # plt.figure()
+    # lw = 1
+    # plt.plot(fpr, tpr, color='darkorange',
+    #          lw=lw, label='ROC curve (area = %0.2f)' % metrics.auc(fpr, tpr))
+    # plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    # plt.xlim([0.0, 1.0])
+    # plt.ylim([0.0, 1.05])
+    # plt.xlabel('False Positive Rate')
+    # plt.ylabel('True Positive Rate')
+    # plt.title('ROC of ground truth')
+    # plt.legend(loc="lower right")
+    # plt.show()
 
     # return exact auc to be benchmarked with
     return auc
@@ -248,6 +253,7 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, station):
     Encrypt dataframe of given station with paillier public key of aggregator and random values
     """
     logging.info('Start encrypting table with {} subjects from station {}'.format(len(station_df), station))
+    #print('Start encrypting table with {} subjects from station {}'.format(len(station_df), station))
     tic = time.perf_counter()
     # Just trivial implementation - improve with vectorizing and
     station_df["Pre"] *= r1
@@ -259,6 +265,7 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, station):
     toc = time.perf_counter()
     #print(f'Encryption time of table {toc - tic:0.4f} seconds')
     logging.info(f'Encryption time {toc - tic:0.4f} seconds')
+    #print(f'Encryption time {toc - tic:0.4f} seconds')
 
     return station_df
 
@@ -497,6 +504,16 @@ def calc_nominator(tp_a, fp_a, agg_pk, length):
     return N_i1, N_i2, N_i3
 
 
+def check_tie(list_pre):
+    """
+    Check if given list contains any duplicates
+    """
+    if len(list_pre) == len(set(list_pre)):
+        return False
+    else:
+        return True
+
+
 def proxy_station():
     """
     Simulation of aggregator service - globally computes privacy preserving AUC table
@@ -523,6 +540,7 @@ def proxy_station():
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
     logging.info('\n')
+    print('Has tie?: {}'.format(check_tie(concat_df["Dec_pre"])))
     #print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
     # Step 24
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
@@ -533,6 +551,9 @@ def proxy_station():
     # Step 25
     M = len(df_new_index) # TODO remove after denominator a
     TP_values, FP_values = compute_tp_fp_values(df_new_index, agg_pk, M)
+
+    #print("TP_dec: {}".format([decrypt(agg_sk, x) for x in TP_values]))
+    #print("FP_dec: {}".format([decrypt(agg_sk, x) for x in FP_values]))
 
     # TP_A is summation of labels (TP)
     TP_A = TP_values[-1]
@@ -554,29 +575,61 @@ def proxy_station():
     fp_a_multiplied = mul_const(agg_pk, FP_A, b)
 
     # Tie condition differences between TP and FP
-    FP_values.insert(0, encrypt(agg_pk, 0))
-    # subtraction of FP_i-1 from FP_i for N2
-    dFP = [e_add(agg_pk, FP_values[i+1], mul_const(agg_pk, FP_values[i], -1)) for i in range(len(FP_values) - 1)]
-    FP_values.pop(0)
+    # determine indexes of threshold values
+    thre_ind = []
+    pred = sort_df["Dec_pre"].to_list()
+    for i in range(M - 1):
+        if pred[i] != pred[i + 1]:
+            thre_ind.append(i)
 
+    thre_ind = list(map(lambda x : x + 1, thre_ind))
+    #print('Thresholds: {}'.format(thre_ind))
+    sTP = []
+    dFP = []
+    FP_values.insert(0, encrypt(agg_pk, 0))
     TP_values.insert(0, encrypt(agg_pk, 0))
+
+    for i in range(1, len(thre_ind)):
+        pre_ind = thre_ind[i - 1]
+        cur_ind = thre_ind[i]
+        sTP.insert(i - 1, e_add(agg_pk, TP_values[cur_ind],  TP_values[pre_ind]))
+        dFP.insert(i - 1, e_add(agg_pk, FP_values[cur_ind], mul_const(agg_pk, FP_values[pre_ind], -1)))
+    #print('Len Tre: {}'.format(len(thre_ind)))
+    #print('Len sTP: {}'.format(len(sTP)))
+    #print('Len dFP: {}'.format(len(dFP)))
+    #print('#  Subj: {}'.format(M))
+
+    #FP_values.insert(0, encrypt(agg_pk, 0))
+    # subtraction of FP_i-1 from FP_i for N2
+    #dFP = [e_add(agg_pk, FP_values[i + 1], mul_const(agg_pk, FP_values[i], -1)) for i in range(len(FP_values) - 1)]
+    #FP_values.pop(0)
+
+    #TP_values.insert(0, encrypt(agg_pk, 0))
     # addition of TP_i-1 to TP_i for N1
-    dTP = [e_add(agg_pk, TP_values[i + 1],  TP_values[i]) for i in range(len(TP_values) - 1)]
-    TP_values.pop(0)
+    #dTP = [e_add(agg_pk, TP_values[i + 1],  TP_values[i]) for i in range(len(TP_values) - 1)]
+    #TP_values.pop(0)
 
     TP_is: Any = []
     FP_is: Any = []
     # Step 28
     # Multiply with a and b respectively
-    for i in range(M):
-        TP_is.append(mul_const(agg_pk, dTP[i], a)) # use dTP for nominator in tie condition
-        FP_is.append(mul_const(agg_pk, dFP[i], b))
+    for i in range(1, len(thre_ind)):
+        TP_is.append(mul_const(agg_pk, sTP[i - 1], a)) # use sTP for nominator in tie condition
+        FP_is.append(mul_const(agg_pk, dFP[i - 1], b))
 
     # Step 29
     D1, D2, D3 = calc_denominator(tp_a_multiplied, fp_a_multiplied, agg_pk)
 
     # Step 30
-    N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, M)
+    N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, len(thre_ind) - 1)
+
+    #print("D1: {}".format(decrypt(agg_sk, D1)))
+    #print("D2: {}".format(decrypt(agg_sk, D2)))
+    #print("D3: {}".format(decrypt(agg_sk, D3)))
+
+    #print("N1s: {}".format([decrypt(agg_sk, x) for x in N_i1]))
+    #print("N2s: {}".format([decrypt(agg_sk, x) for x in N_i2]))
+    #print("N3s: {}".format([decrypt(agg_sk, x) for x in N_i3]))
 
     # partial decrypt and save to train
     results["D1"].append(proxy_decrypt(agg_sk, D1))
@@ -670,8 +723,8 @@ if __name__ == "__main__":
     stations = 3  # TODO adjust
 
     protocol = False # if protocol true, then: subject_list = [20]
-    #subject_list = [20]
-    subject_list = [5, 15, 50, 200]
+    #subject_list = [15]
+    subject_list = [40, 40, 40, 40]
 
     train = Train(results='results.pkl')
 
@@ -684,7 +737,7 @@ if __name__ == "__main__":
 
         # Initialization: recreate synthetic data
         try:
-            shutil.rmtree('./data')
+            #shutil.rmtree('./data/')
             logging.info('Removed previous results')
         except Exception as e:
             logging.info('No previous files and results to remove')
@@ -697,7 +750,7 @@ if __name__ == "__main__":
             create_protocol_data()
         else:
             create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
-
+            pass
         results = train.load_results()
         results = generate_keys(stations, results)
         # Train Building process
