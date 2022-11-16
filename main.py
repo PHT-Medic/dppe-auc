@@ -107,15 +107,20 @@ def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
     Create and save synthetic data of given number of samples and number of stations. Including flag patients
     """
     for station_i in range(num_stations):
-        fake_data_val = randint(fake_patients[0], fake_patients[1]) # random number flag value in given percentage range
-        data = {"Pre": np.random.randint(low=5, high=100, size=samples+fake_data_val),
-                "Label": np.random.choice([0,1], size=samples+fake_data_val, p=[0.1, 0.9]),
-                "Flag": np.random.choice(np.concatenate([[1] * samples, [0] * fake_data_val]), samples+fake_data_val, replace=False)}
+        valid = False
+        while not valid:
+            fake_data_val = randint(fake_patients[0], fake_patients[1]) # random number flag value in given percentage range
+            data = {"Pre": np.random.randint(low=5, high=100, size=samples+fake_data_val),
+                    "Label": np.random.choice([0,1], size=samples+fake_data_val, p=[0.1, 0.9]),
+                    "Flag": np.random.choice(np.concatenate([[1] * samples, [0] * fake_data_val]), samples+fake_data_val, replace=False)}
 
-        df = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
-        df.loc[df["Flag"] == 0, "Label"] = 0 # when Flag is 0 Label must also be 0
-        df.to_pickle('./data/synthetic/data_s' + str(station_i+1) + '.pkl')
+            df = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
+            df.loc[df["Flag"] == 0, "Label"] = 0 # when Flag is 0 Label must also be 0
 
+            if not np.all(df["Label"] == 1):
+                valid = True
+
+            df.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
 
 def calculate_regular_auc(stations, protocol):
     """
@@ -132,18 +137,21 @@ def calculate_regular_auc(stations, protocol):
     concat_df = pd.concat(lst_df)
     #print('All unique Pre? ', concat_df["Pre"].is_unique)
     print('Use data from {} stations. Total of {} subjects (including flag subjects) '.format(stations, len(concat_df)))
-    filtered_df = concat_df[concat_df["Flag"] == 1] # remove flag patients
-    sort_df = filtered_df.sort_values(by='Pre', ascending=False)
+
+    sort_df = concat_df.sort_values(by='Pre', ascending=False).reset_index()
     #sort_df = concat_df.sort_values(by='Pre', ascending=False)
-    #print("Data Predi: {}".format(sort_df["Pre"].to_list()))
-    #print("Data Label: {}".format(sort_df["Label"].to_list()))
-    #print("Data Flags: {}".format(sort_df["Flag"].to_list()))
+    print("Data Predi: {}".format(sort_df["Pre"].to_list()))
+    print("Data Label: {}".format(sort_df["Label"].to_list()))
+    print("Data Flags: {}".format(sort_df["Flag"].to_list()))
+
+    filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
+
     # iterate over sorted list
     # auc = 0.0
     # height = 0.0
-    sort_df["Pre"] = sort_df["Pre"] / 100
-    y = sort_df["Label"]
-    pred = sort_df["Pre"]
+    filtered_df["Pre"] /= 100
+    y = filtered_df["Label"]
+    pred = filtered_df["Pre"]
 
     #fpr, tpr, _ = metrics.roc_curve(y, pred, pos_label=1)
     #auc = metrics.auc(fpr, tpr)
@@ -552,8 +560,8 @@ def proxy_station():
     M = len(df_new_index) # TODO remove after denominator a
     TP_values, FP_values = compute_tp_fp_values(df_new_index, agg_pk, M)
 
-    #print("TP_dec: {}".format([decrypt(agg_sk, x) for x in TP_values]))
-    #print("FP_dec: {}".format([decrypt(agg_sk, x) for x in FP_values]))
+    print("TP_dec: {}".format([decrypt(agg_sk, x) for x in TP_values]))
+    print("FP_dec: {}".format([decrypt(agg_sk, x) for x in FP_values]))
 
     # TP_A is summation of labels (TP)
     TP_A = TP_values[-1]
@@ -583,7 +591,7 @@ def proxy_station():
             thre_ind.append(i)
 
     thre_ind = list(map(lambda x : x + 1, thre_ind))
-    #print('Thresholds: {}'.format(thre_ind))
+    print('Thresholds: {}'.format(thre_ind))
     sTP = []
     dFP = []
     FP_values.insert(0, encrypt(agg_pk, 0))
@@ -724,10 +732,10 @@ if __name__ == "__main__":
 
     protocol = False # if protocol true, then: subject_list = [20]
     #subject_list = [15]
-    subject_list = [40, 40, 40, 40]
+    subject_list = [10, 10, 10, 10, 10, 10, 15, 15, 15, 15]
 
     train = Train(results='results.pkl')
-
+    differences = []
     for subjects in subject_list:
         print("Remove previous results")
         try:
@@ -737,7 +745,7 @@ if __name__ == "__main__":
 
         # Initialization: recreate synthetic data
         try:
-            #shutil.rmtree('./data/')
+            shutil.rmtree('./data/')
             logging.info('Removed previous results')
         except Exception as e:
             logging.info('No previous files and results to remove')
@@ -799,5 +807,9 @@ if __name__ == "__main__":
         #for i in range(stations):
         #    AUC = stations_auc(i)
         print('Equal GT? {}'.format(auc_gt == auc_pp))
-        print('Difference pp-AUC to GT: ', auc_gt - auc_pp)
+        diff = auc_gt - auc_pp
+        differences.append(diff)
+        print('Difference pp-AUC to GT: ', diff)
         print('\n')
+
+    print("Avg difference {} over {} runs".format(sum(differences)/len(differences), len(differences)))
