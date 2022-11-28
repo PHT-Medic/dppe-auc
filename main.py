@@ -138,20 +138,19 @@ def calculate_regular_auc(stations, protocol):
     #print('All unique Pre? ', concat_df["Pre"].is_unique)
     print('Use data from {} stations. Total of {} subjects (including flag subjects) '.format(stations, len(concat_df)))
 
-    sort_df = concat_df.sort_values(by='Pre', ascending=False).reset_index()
-    #sort_df = concat_df.sort_values(by='Pre', ascending=False)
+    #sort_df = concat_df.sort_values(by='Pre', ascending=False).reset_index()
+    sort_df = concat_df.sort_values(by='Pre', ascending=False)
     print("Data Predi: {}".format(sort_df["Pre"].to_list()))
     print("Data Label: {}".format(sort_df["Label"].to_list()))
     print("Data Flags: {}".format(sort_df["Flag"].to_list()))
-
     filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
-
     # iterate over sorted list
     # auc = 0.0
     # height = 0.0
-    filtered_df["Pre"] /= 100
-    y = filtered_df["Label"]
-    pred = filtered_df["Pre"]
+    dfd = filtered_df.copy()
+    dfd["Pre"] = filtered_df["Pre"] / 100
+    y = dfd["Label"]
+    pred = dfd["Pre"]
 
     #fpr, tpr, _ = metrics.roc_curve(y, pred, pos_label=1)
     #auc = metrics.auc(fpr, tpr)
@@ -732,7 +731,7 @@ if __name__ == "__main__":
 
     protocol = False # if protocol true, then: subject_list = [20]
     #subject_list = [15]
-    subject_list = [10, 10, 10, 10, 10, 10, 15, 15, 15, 15]
+    subject_list = [10, 10, 10, 10, 10, 10]
 
     train = Train(results='results.pkl')
     differences = []
