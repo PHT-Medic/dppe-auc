@@ -1,26 +1,20 @@
 # pp-auc
-Privacy-preserving AUC computation with SMPC protocol
-
-
-Exact privacy preserving AUC computation for the PHT1.0
+Privacy-preserving AUC computation with PHT-meDIC
+Exact privacy preserving AUC computation using the PHT.
 
 Concept of Mete: https://www.overleaf.com/project/5e39693bd5d8de0001399783
 
-# Next steps
-- Improve implemtation performance
-- Continue to follow protocol and finalize code
-- Include functionalities in train-container-library
-- Test on real PHT Setup
 
 ## Install requirements
 Run `pip install -r requirements.txt` to ensure all requirments are fullfilled.
 
-## Data generation
+## Synthetic Data generation
+During each run, synthetic data is generated.
 To generate sampe data, specify the number of stations and subjects. Afterwards 30-50% of fake subjects are added randomly. Unencrypted data is stored 
 
 
 ## Key creation
-Keys are generated and stored for the number of stations and the aggregator under `data/keys/`
+Keys are generated and stored for the number of stations and the aggregator within the  `data/keys/` directory
 
 ## Execute
 1. Define number of subjects and create dataframes and keys.
@@ -55,3 +49,13 @@ Encryption time 71.8119 seconds
 
 
 
+Removed parts: 
+TP = []
+    FP = []
+
+    TP.insert(0, encrypt(agg_pk, 0))
+    FP.insert(0, encrypt(agg_pk, 0))
+
+    for i in range(1, length+ 1):
+        TP.insert(i - 1, e_add(agg_pk, TP[i-1], dataframe['Label'][i-1]))
+        FP.insert(i - 1, e_add(agg_pk, FP[i-1], add_const(agg_pk, mul_const(agg_pk, dataframe['Label'][i-1], -1), 1)))
