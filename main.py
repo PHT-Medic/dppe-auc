@@ -54,9 +54,9 @@ class Train:
                     'D1': [],
                     'D2': [],
                     'D3': [],
-                    'N1': {},
-                    'N2': {},
-                    'N3': {},
+                    'N1': [],
+                    'N2': [],
+                    'N3': [],
                     }
 
     def save_results(self, results):
@@ -141,9 +141,13 @@ def calculate_regular_auc(stations, protocol, performance):
 
     #sort_df = concat_df.sort_values(by='Pre', ascending=False).reset_index()
     sort_df = concat_df.sort_values(by='Pre', ascending=False)
-    #print("Data Predi: {}".format(sort_df["Pre"].to_list()))
-    #print("Data Label: {}".format(sort_df["Label"].to_list()))
-    #print("Data Flags: {}".format(sort_df["Flag"].to_list()))
+
+    debugging = False
+
+    if debugging:
+        print("Data Predi: {}".format(sort_df["Pre"].to_list()))
+        print("Data Label: {}".format(sort_df["Label"].to_list()))
+        print("Data Flags: {}".format(sort_df["Flag"].to_list()))
     filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
     # iterate over sorted list
     # auc = 0.0
@@ -414,55 +418,22 @@ def compute_tp_fp_values(dataframe, agg_pk, length):
     """
     Compute TP and FP values given encrypted sorted dataframe
     """
-    # TP = []
-    # FP = []
-    #
-    # TP.insert(0, encrypt(agg_pk, 0))
-    # FP.insert(0, encrypt(agg_pk, 0))
-    #
-    # for i in range(1, length + 1):
-    #     TP.insert(i - 1, e_add(agg_pk, TP[i - 1], dataframe['Label'][i - 1]))
-    #     FP.insert(i - 1, e_add(agg_pk, FP[i - 1], add_const(agg_pk, mul_const(agg_pk, dataframe['Label'][i - 1], -1), 1)))
-    #
-    # return TP, FP
-
     TP_values = []
     FP_values = []
 
-    for i in range(length):
-        TP_enc = sum_over_enc_series(dataframe['Label'][:i + 1], agg_pk)
-        TP_values.append(TP_enc)
+    TP_values.insert(0, encrypt(agg_pk, 0))
+    FP_values.insert(0, encrypt(agg_pk, 0))
 
-        # subtraction of TP_i from FP_i
-        sum_flags = sum_over_enc_series(dataframe['Flag'][:i + 1], agg_pk)
-        FP_enc = e_add(agg_pk, sum_flags, mul_const(agg_pk, TP_enc, -1))
-        FP_values.append(FP_enc)
+    for i in range(1, length + 1):
+        TP_values.append(e_add(agg_pk, TP_values[i - 1], dataframe['Label'][i - 1]))
+        sum_flags = sum_over_enc_series(dataframe['Flag'][:i], agg_pk)
+        FP_values.append(e_add(agg_pk, sum_flags, mul_const(agg_pk, TP_values[-1], -1)))
 
     return TP_values, FP_values
 
-
-def calc_denominator(tp_a_mul, fp_a_mul, agg_pk):
-    """
-    Calculate denominator parts given multiplied TP and FP values
-    """
-    # Denominator
-    r_1A = randint(1, 100)
-    r_2A = randint(1, 100)
-
-    D1 = add_const(agg_pk, tp_a_mul, r_1A)
-    D2 = add_const(agg_pk, fp_a_mul, r_2A)
-
-    D3_1 = mul_const(agg_pk, tp_a_mul, r_2A)
-    D3_2 = mul_const(agg_pk, fp_a_mul, r_1A)
-
-    D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A * r_2A))
-
-    return D1, D2, D3
-
-
 def z_values(n):
     """
-    Generate fast random values of list length n which sum is zero
+    Generate random values of list length n which sum is zero
     """
     l = random.sample(range(-int(n/2), int(n/2)), k=n-1)
     return l + [-sum(l)]
@@ -476,7 +447,6 @@ def calc_nominator(tp_a, fp_a, agg_pk, length):
     N_i2 = []
     N_i3 = []
 
-    N_i3_noise_free = []
     # Step 31
     #  generate M random numbers which sum up to 0
     # tic = time.perf_counter()
@@ -496,30 +466,9 @@ def calc_nominator(tp_a, fp_a, agg_pk, length):
 
         N_i3_1 = mul_const(agg_pk, TP_i, r2_i)
         N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
-        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i)) #with N=11
-        #N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, add_const(agg_pk, N_i3_2, r1_i * r2_i), 1))
-        #Ni3dec = decrypt(agg_sk, N_i3_a)
-        #print("Dec_Ni3",Ni3dec)
-        # Add z values to N_i3_a
-        #print(Z_values[i])
-        #n_i_3_noise = N_i3_a
-        N_i3_noise_free.append(N_i3_a)
+        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
         n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
-        #if Ni3dec + Z_values[i] >= 0:
-        #    n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
-        #else:
-            # if Ni_3 gets negative
-            #noise_final.append(Z_values[i])
-            #n_i_index.append(i)
-            #n_i3_neg.append(Ni3dec)
-            #n_i_3_noise = Ni3dec + Z_values[i]
         N_i3.append(n_i_3_noise)
-        #print("Dec_Ni3_noise", decrypt(agg_sk, n_i_3_noise))
-    #print("N3 noise free", [decrypt(agg_sk, x) for x in N_i3_noise_free])
-    #print("Sum ", sum(noise_final))
-    #print("Noise ", noise_final)
-    #print("Index ", n_i_index)
-    #print("Ni ", n_i3_neg)
     return N_i1, N_i2, N_i3
 
 
@@ -571,27 +520,14 @@ def proxy_station():
     M = len(df_new_index)
     TP_values, FP_values = compute_tp_fp_values(df_new_index, agg_pk, M)
 
-    #print("TP_dec: {}".format([decrypt(agg_sk, x) for x in TP_values]))
-    #print("FP_dec: {}".format([decrypt(agg_sk, x) for x in FP_values]))
-
-    # TP_A is summation of labels (TP)
-    TP_A = TP_values[-1]
-    #logging.info('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
-    #print('TP_A: {}'.format(decrypt(agg_sk, TP_A)))
-
-    # FP_A is sum Flags (FP) - TP_A
-    FP_A = FP_values[-1]
-    #logging.info('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
-    #print('FP_A: {}'.format(decrypt(agg_sk, FP_A)))
-    #print('Expected D: {}'.format(decrypt(agg_sk, FP_A) * decrypt(agg_sk, TP_A)))
-
     # Step 26
     a = randint(1, 100)
     b = randint(1, 100)
 
     # Step 27
-    tp_a_multiplied = mul_const(agg_pk, TP_A, a)
-    fp_a_multiplied = mul_const(agg_pk, FP_A, b)
+    # TP_A is summation of labels (TP)
+    tp_a_multiplied = mul_const(agg_pk, TP_values[-1], a)
+    fp_a_multiplied = mul_const(agg_pk, FP_values[-1], b)
 
     # Tie condition differences between TP and FP
     # determine indexes of threshold values
@@ -601,62 +537,57 @@ def proxy_station():
         if pred[i] != pred[i + 1]:
             thre_ind.append(i)
 
-    thre_ind = list(map(lambda x: x + 1, thre_ind))
-    #print('Thresholds: {}'.format(thre_ind))
+    thre_ind = list(map(lambda x: x + 1, thre_ind)) # add one
     sTP = []
     dFP = []
-    #FP_values.insert(0, encrypt(agg_pk, 0))
-    #TP_values.insert(0, encrypt(agg_pk, 0))
-
-    for i in range(1, len(thre_ind)):
-        pre_ind = thre_ind[i - 1]
-        cur_ind = thre_ind[i]
-        sTP.insert(i - 1, e_add(agg_pk, TP_values[cur_ind],  TP_values[pre_ind]))
-        dFP.insert(i - 1, e_add(agg_pk, FP_values[cur_ind], mul_const(agg_pk, FP_values[pre_ind], -1)))
-    #print('Len Tre: {}'.format(len(thre_ind)))
-    #print('Len sTP: {}'.format(len(sTP)))
-    #print('Len dFP: {}'.format(len(dFP)))
-    #print('#  Subj: {}'.format(M))
-
-    #FP_values.insert(0, encrypt(agg_pk, 0))
-    # subtraction of FP_i-1 from FP_i for N2
-    #dFP = [e_add(agg_pk, FP_values[i + 1], mul_const(agg_pk, FP_values[i], -1)) for i in range(len(FP_values) - 1)]
-    #FP_values.pop(0)
-
-    #TP_values.insert(0, encrypt(agg_pk, 0))
-    # addition of TP_i-1 to TP_i for N1
-    #dTP = [e_add(agg_pk, TP_values[i + 1],  TP_values[i]) for i in range(len(TP_values) - 1)]
-    #TP_values.pop(0)
-
-    TP_is: Any = []
-    FP_is: Any = []
     # Step 28
     # Multiply with a and b respectively
     for i in range(1, len(thre_ind)):
-        TP_is.append(mul_const(agg_pk, sTP[i - 1], a)) # use sTP for nominator in tie condition
-        FP_is.append(mul_const(agg_pk, dFP[i - 1], b))
+        pre_ind = thre_ind[i - 1]
+        cur_ind = thre_ind[i]
+        sTP.append(mul_const(agg_pk, e_add(agg_pk, TP_values[cur_ind],  TP_values[pre_ind]), a))  # use sTP for nominator in tie condition
+        dFP.append(mul_const(agg_pk, e_add(agg_pk, FP_values[cur_ind], mul_const(agg_pk, FP_values[pre_ind], -1)), b))
 
-    # Step 29
-    D1, D2, D3 = calc_denominator(tp_a_multiplied, fp_a_multiplied, agg_pk)
-
-    # Step 30
-    N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, len(thre_ind) - 1)
-
-    #print("D1: {}".format(decrypt(agg_sk, D1)))
-    #print("D2: {}".format(decrypt(agg_sk, D2)))
-    #print("D3: {}".format(decrypt(agg_sk, D3)))
-
-    #print("N1s: {}".format([decrypt(agg_sk, x) for x in N_i1]))
-    #print("N2s: {}".format([decrypt(agg_sk, x) for x in N_i2]))
-    #print("N3s: {}".format([decrypt(agg_sk, x) for x in N_i3]))
+    # Step 29 Denominator
+    r_1A = randint(1, 100)
+    r_2A = randint(1, 100)
+    #D1 = add_const(agg_pk, tp_a_multiplied, r_1A)
+    #D2 = add_const(agg_pk, fp_a_multiplied, r_2A)
+    D3_1 = mul_const(agg_pk, tp_a_multiplied, r_2A)
+    D3_2 = mul_const(agg_pk, fp_a_multiplied, r_1A)
+    #D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A * r_2A))
 
     # partial decrypt and save to train
-    results["D1"].append(proxy_decrypt(agg_sk, D1))
-    results["D2"].append(proxy_decrypt(agg_sk, D2))
-    results["D3"].append(proxy_decrypt(agg_sk, D3))
-    results["N1"] = [proxy_decrypt(agg_sk, x) for x in N_i1]
-    results["N2"] = [proxy_decrypt(agg_sk, x) for x in N_i2]
-    results["N3"] = [proxy_decrypt(agg_sk, x) for x in N_i3]
+    results["D1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, tp_a_multiplied, r_1A)))
+    results["D2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, fp_a_multiplied, r_2A)))
+    results["D3"].append(proxy_decrypt(agg_sk, add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A * r_2A))))
+
+
+    # Step 30 & 31
+    #  generate M random numbers which sum up to 0
+    # tic = time.perf_counter()
+    Z_values = z_values(len(sTP))
+    # toc = time.perf_counter()
+    # print(f'Generation time noise Z {toc - tic:0.4f} seconds')
+
+    for i in range(len(sTP)):
+        r1_i = randint(1, 100)
+        r2_i = randint(1, 100)
+        results["N1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, sTP[i], r1_i)))
+        results["N2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, dFP[i], r2_i)))
+        N_i3_1 = mul_const(agg_pk, sTP[i], r2_i)
+        N_i3_2 = mul_const(agg_pk, dFP[i], r1_i)
+        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
+        results["N3"].append(proxy_decrypt(agg_sk, add_const(agg_pk, N_i3_a, Z_values[i])))
+
+    debugging = False
+
+    if debugging:
+        print("TP_dec: {}".format([decrypt(agg_sk, x) for x in TP_values]))
+        print("FP_dec: {}".format([decrypt(agg_sk, x) for x in FP_values]))
+        print('Len Tre: {}'.format(len(thre_ind)))
+        print('Thresholds: {}'.format(thre_ind))
+        print('#  Subj: {}'.format(M))
 
     train.save_results(results)
 
@@ -709,22 +640,26 @@ def plot_results(res):
     color = iter(cm.rainbow(np.linspace(0, 1, len(df.Stations.unique()))))
 
     #pd.pivot_table(df.reset_index(), index='Samples', columns='Stations', values='Total').plot(subplots=True, layout=(1, 3))
+    # for category in df.Stations.unique():
+    #     c = next(color)
+    #     plt.plot('Samples', 'Station_1', c=c, data=df.loc[df['Stations'].isin([category])], marker='x',
+    #              linestyle=':', label=str(category) + ' S - Step 1')
+    #     plt.plot('Samples', 'Proxy', c=c, data=df.loc[df['Stations'].isin([category])], marker='o',
+    #              linestyle=' ', label=str(category) + ' S Proxy')
+    #     plt.plot('Samples', 'Station_2', data=df.loc[df['Stations'].isin([category])], marker='x',
+    #              c=c, linestyle='-.', label=str(category) + "  S - Step 2")
+    #     plt.plot('Samples', 'Total', c=c, data=df.loc[df['Stations'].isin([category])], marker='x',
+    #              label=str(category) + ' S Total')
     for category in df.Stations.unique():
-        c = next(color)
-        plt.plot('Samples', 'Station_1', c=c, data=df.loc[df['Stations'].isin([category])], marker='x',
-                 linestyle=':', label=str(category) + ' S - Step 1')
-        plt.plot('Samples', 'Proxy', c=c, data=df.loc[df['Stations'].isin([category])], marker='o',
-                 linestyle=' ', label=str(category) + ' S Proxy')
-        plt.plot('Samples', 'Station_2', data=df.loc[df['Stations'].isin([category])], marker='x',
-                 c=c, linestyle='-.', label=str(category) + "  S - Step 2")
-        plt.plot('Samples', 'Total', c=c, data=df.loc[df['Stations'].isin([category])], marker='x',
-                 label=str(category) + ' S Total')
+        plt.plot('Samples', 'Total', c="blue", data=df.loc[df['Stations'].isin([category])], marker='o',
+                 label=str(category) + 'Total runtime')
     plt.xlabel('Number of subjects')
-
+    num_stations = res['stations'][0]
     plt.ylabel('Time (sec)')
-    plt.title('pp-AUC total and station runtime')
-    plt.legend(loc="upper left")
+    plt.title('DPPE-AUC total runtime w/ ' + str(num_stations) + ' stations')
+    #plt.legend(loc="upper left")
     plt.show()
+    #plt.savefig('runtime-s-' + str(num_stations) + '.png')
 
     # Enter raw dataF
     gt = perf['gt']
@@ -747,18 +682,18 @@ def plot_results(res):
     CTEs = [gt_mean]
     error = [gt_std]
 
-    fig, ax = plt.subplots()
-    sns.boxplot(x=np.zeros(len(diff)), y=diff)
-    ax.set_ylabel('difference')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(materials)
-    ax.set_title('AUC difference GT to PP')
-    ax.yaxis.grid(True)
+    # fig, ax = plt.subplots()
+    # sns.boxplot(x=np.zeros(len(diff)), y=diff)
+    # ax.set_ylabel('difference')
+    # ax.set_xticks(x_pos)
+    # ax.set_xticklabels(materials)
+    # ax.set_title('AUC difference GT to PP')
+    # ax.yaxis.grid(True)
 
     # Save the figure and show
-    plt.tight_layout()
+    #plt.tight_layout()
     #plt.savefig('bar_plot_with_error_bars.png')
-    plt.show()
+    #plt.show()
 
 
 if __name__ == "__main__":
@@ -772,9 +707,8 @@ if __name__ == "__main__":
     #subject_list = [15]
 
     station_list = [3]# ,12]
-    subject_list = [8, 16, 32]
+    subject_list = [25, 50, 100, 200, 400, 800, 1600] # 320, 640, 1280, 2560, 5120, 10240]
     #per = {'time': {'stations_1': [0.0238299579990174, 0.02750213200003297, 0.04754705566544241, 0.04858811799931573, 0.09245213866718889, 0.08697813883676038], 'proxy': [0.381446125000366, 0.7966919999889797, 0.7213030839920975, 1.201679542005877, 1.0368845000048168, 1.7390484170027776], 'stations_2': [0.13467783300438896, 0.2640320829959819, 0.27925649999815505, 0.38997579099668656, 0.3639489589986624, 0.478104624999105], 'total_step_1': [0.0714898739970522, 0.1650127920001978, 0.14264116699632723, 0.29152870799589437, 0.2773564160015667, 0.5218688330205623]}, 'samples': [30, 68, 67, 133, 138, 267], 'stations': [3, 6, 3, 6, 3, 6], 'pp-auc': [0.7727272727272727, 0.6595744680851063, 0.09259259259259259, 0.4654895666131621, 0.5810936051899908, 0.5806722689075631], 'gt-auc': [0.7727272727272727, 0.6595744680851063, 0.09259259259259262, 0.4654895666131621, 0.5810936051899908, 0.580672268907563]}
-
     #plot_results(per)
     #exit(0)
     performance = {'time':
@@ -794,18 +728,8 @@ if __name__ == "__main__":
         differences = []
         for stations in station_list:
             performance['stations'].append(stations)
-            print("Remove previous results")
             try:
-                shutil.move('./data/', './data-s' + str(subjects) + '-n-' + str(stations))
-                os.remove('./data/pht_results/results.pkl')
-            except Exception:
-                pass
-
-            # Initialization: recreate synthetic data
-            try:
-                shutil.move('./data/', './data-s' + subjects + '-n-' + stations)
                 shutil.rmtree('./data/')
-                print('Backuped prev data')
                 logging.info('Backuped and deleted previous results')
             except Exception as e:
                 logging.info('No previous files and results to remove')
@@ -880,6 +804,14 @@ if __name__ == "__main__":
             print('\n')
 
         print("Avg difference {} over {} runs".format(sum(differences)/len(differences), len(differences)))
+        # back up data and remove directory
+        try:
+            shutil.move('./data/', './bk-data-s' + subjects + '-n-' + stations)
+            shutil.rmtree('./data/')
+            print('Saved prev data')
+            logging.info('Saved and deleted previous results')
+        except Exception as e:
+            logging.info('No previous files and results to remove')
 
     print(performance)
     plot_results(performance)
