@@ -4,12 +4,11 @@ import os
 import pickle
 import shutil
 import time
-from random import randint
-from typing import Any
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from typing import Any
+from random import randint
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -17,10 +16,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from matplotlib.pyplot import cm
+from matplotlib.cm import get_cmap
 from sklearn import metrics
-import seaborn as sns
 from paillier.paillier import *
-
 
 class Train:
     def __init__(self, results=None):
@@ -54,9 +52,9 @@ class Train:
                     'D1': [],
                     'D2': [],
                     'D3': [],
-                    'N1': [],
-                    'N2': [],
-                    'N3': [],
+                    'N1': {},
+                    'N2': {},
+                    'N3': {},
                     }
 
     def save_results(self, results):
@@ -71,34 +69,6 @@ class Train:
         except Exception as err:
             print(err)
             raise FileNotFoundError("Result file cannot be saved")
-
-
-def create_protocol_data():
-    """
-    Create data used in protocol
-    """
-    data_1 = {"Pre": [99, 5, 12, 67, 4],
-              "Label": [1, 1, 0, 0, 1],
-              "Flag": [1, 1, 0, 1, 1]}
-
-    df1 = pd.DataFrame(data_1, columns=['Pre', 'Label', 'Flag'])
-
-    df1.to_pickle('./data/synthetic/protocol_data_s1.pkl')
-
-    data_2 = {"Pre": [11, 27, 17, 98, 44],
-              "Label": [0, 1, 0, 1, 0],
-              "Flag": [0, 1, 1, 1, 0]}
-
-    df2 = pd.DataFrame(data_2, columns=['Pre', 'Label', 'Flag'])
-
-    df2.to_pickle('./data/synthetic/protocol_data_s2.pkl')
-
-    data_3 = {"Pre": [77, 88, 41, 39, 66],
-              "Label": [1, 0, 0, 0, 0],
-              "Flag": [1, 0, 0, 1, 0]}
-    df3 = pd.DataFrame(data_3, columns=['Pre', 'Label', 'Flag'])
-    df3.to_pickle('./data/synthetic/protocol_data_s3.pkl')
-
 
 def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
     """
@@ -121,17 +91,13 @@ def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
 
             df.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
 
-
-def calculate_regular_auc(stations, protocol, performance):
+def calculate_regular_auc(stations, performance):
     """
     Calculate AUC with sklearn as ground truth GT
     """
     lst_df = []
     for i in range(stations):
-        if protocol:
-            df_i = pickle.load(open('./data/synthetic/protocol_data_s' + str(i+1) + '.pkl', 'rb'))
-        else:
-            df_i = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
+        df_i = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
         lst_df.append(df_i)
 
     concat_df = pd.concat(lst_df)
@@ -393,18 +359,6 @@ def pp_auc_protocol(station_df, station=int):
 
     return prev_results
 
-def sum_over_enc_series(encrypted_series, agg_pk):
-    """
-    Compute encrypted sum over given series
-    """
-    if len(encrypted_series) == 1:
-        return encrypted_series[0]
-    else:
-        res = encrypt(agg_pk, 0)
-        for cipher in encrypted_series:
-            res = add(agg_pk, res, cipher)
-        return res
-
 def z_values(n):
     """
     Generate random values of list length n which sum is zero
@@ -412,7 +366,61 @@ def z_values(n):
     l = random.sample(range(-int(n/2), int(n/2)), k=n-1)
     return l + [-sum(l)]
 
-def proxy_station():
+def calc_nominator(tp_a, fp_a, agg_pk, length):
+    """
+    Calculate nominator parts given TP_A, FP_A
+    """
+    N_i1 = []
+    N_i2 = []
+    N_i3 = []
+
+    N_i3_noise_free = []
+    # Step 31
+    #  generate M random numbers which sum up to 0
+    # tic = time.perf_counter()
+    Z_values = z_values(length)
+    # toc = time.perf_counter()
+    # print(f'Generation time noise Z {toc - tic:0.4f} seconds')
+
+    for i in range(length):
+        r1_i = randint(1, 100)
+        r2_i = randint(1, 100)
+
+        TP_i = tp_a[i]
+        FP_i = fp_a[i]
+
+        N_i1.append(add_const(agg_pk, TP_i, r1_i))
+        N_i2.append(add_const(agg_pk, FP_i, r2_i))
+
+        N_i3_1 = mul_const(agg_pk, TP_i, r2_i)
+        N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
+        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i)) #with N=11
+        #N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, add_const(agg_pk, N_i3_2, r1_i * r2_i), 1))
+        #Ni3dec = decrypt(agg_sk, N_i3_a)
+        #print("Dec_Ni3",Ni3dec)
+        # Add z values to N_i3_a
+        #print(Z_values[i])
+        #n_i_3_noise = N_i3_a
+        N_i3_noise_free.append(N_i3_a)
+        n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
+        #if Ni3dec + Z_values[i] >= 0:
+        #    n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
+        #else:
+            # if Ni_3 gets negative
+            #noise_final.append(Z_values[i])
+            #n_i_index.append(i)
+            #n_i3_neg.append(Ni3dec)
+            #n_i_3_noise = Ni3dec + Z_values[i]
+        N_i3.append(n_i_3_noise)
+        #print("Dec_Ni3_noise", decrypt(agg_sk, n_i_3_noise))
+    #print("N3 noise free", [decrypt(agg_sk, x) for x in N_i3_noise_free])
+    #print("Sum ", sum(noise_final))
+    #print("Noise ", noise_final)
+    #print("Index ", n_i_index)
+    #print("Ni ", n_i3_neg)
+    return N_i1, N_i2, N_i3
+
+def dppe_auc_proxy():
     """
     Simulation of aggregator service - globally computes privacy preserving AUC table
     """
@@ -485,27 +493,48 @@ def proxy_station():
             thre_ind.append(i)
 
     thre_ind = list(map(lambda x: x + 1, thre_ind)) # add one
+    sTP = []
+    dFP = []
+    #FP_values.insert(0, encrypt(agg_pk, 0))
+    #TP_values.insert(0, encrypt(agg_pk, 0))
 
-    # Multiply with a and b respectively
-    Z_values = z_values(len(thre_ind)-1)
     for i in range(1, len(thre_ind)):
         pre_ind = thre_ind[i - 1]
         cur_ind = thre_ind[i]
-        dFP_t = mul_const(agg_pk, e_add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
-        sTP_t = mul_const(agg_pk, e_add(agg_pk, tp_values[cur_ind],  tp_values[pre_ind]), a)
-        r1_i = randint(1, 100)
-        r2_i = randint(1, 100)
-        results["N1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, sTP_t, r1_i)))
-        results["N2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, dFP_t, r2_i)))
-        N_i3_1 = mul_const(agg_pk, sTP_t, r2_i)
-        N_i3_2 = mul_const(agg_pk, dFP_t, r1_i)
-        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
-        results["N3"].append(proxy_decrypt(agg_sk, add_const(agg_pk, N_i3_a, Z_values[i-1])))
+        sTP.insert(i - 1, e_add(agg_pk, tp_values[cur_ind],  tp_values[pre_ind]))
+        dFP.insert(i - 1, e_add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)))
+    # Multiply with a and b respectively
+    # Z_values = z_values(len(thre_ind)-1)
+    # for i in range(1, len(thre_ind)):
+    #     pre_ind = thre_ind[i - 1]
+    #     cur_ind = thre_ind[i]
+    #     dFP_t = mul_const(agg_pk, e_add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
+    #     sTP_t = mul_const(agg_pk, e_add(agg_pk, tp_values[cur_ind],  tp_values[pre_ind]), a)
+    #     r1_i = randint(1, 100)
+    #     r2_i = randint(1, 100)
+    #     results["N1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, sTP_t, r1_i)))
+    #     results["N2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, dFP_t, r2_i)))
+    #     N_i3_1 = mul_const(agg_pk, sTP_t, r2_i)
+    #     N_i3_2 = mul_const(agg_pk, dFP_t, r1_i)
+    #     N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
+    #     results["N3"].append(proxy_decrypt(agg_sk, add_const(agg_pk, N_i3_a, Z_values[i-1])))
+    #
+    TP_is: Any = []
+    FP_is: Any = []
+    # Step 28
+    # Multiply with a and b respectively
+    for i in range(1, len(thre_ind)):
+        TP_is.append(mul_const(agg_pk, sTP[i - 1], a))  # use sTP for nominator in tie condition
+        FP_is.append(mul_const(agg_pk, dFP[i - 1], b))
 
+    # Step 30
+    N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, len(thre_ind) - 1)
+    results["N1"] = [proxy_decrypt(agg_sk, x) for x in N_i1]
+    results["N2"] = [proxy_decrypt(agg_sk, x) for x in N_i2]
+    results["N3"] = [proxy_decrypt(agg_sk, x) for x in N_i3]
     train.save_results(results)
 
-
-def stations_auc(station):
+def dppe_auc_station_final(station):
     """
     Simulation of station delegated AUC parts to compute global AUC locally
     """
@@ -542,7 +571,6 @@ def stations_auc(station):
     print('PP-AUC: {}'.format(auc))
     return auc
 
-
 def plot_results(res):
     perf = pd.DataFrame(list(zip(res['pp-auc'], res['gt-auc'])), index=res['stations'], columns=['pp', 'gt'])
     total_time = [sum(x) for x in zip(*[res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2']])]
@@ -550,29 +578,20 @@ def plot_results(res):
                                res['time']['stations_2'], total_time, res['samples'], res['stations'])),
                       index=res['stations'],
                       columns=['Station_1', 'Proxy', 'Station_2', 'Total', 'Samples', 'Stations'])
-    color = iter(cm.rainbow(np.linspace(0, 1, len(df.Stations.unique()))))
-
-    #pd.pivot_table(df.reset_index(), index='Samples', columns='Stations', values='Total').plot(subplots=True, layout=(1, 3))
-    # for category in df.Stations.unique():
-    #     c = next(color)
-    #     plt.plot('Samples', 'Station_1', c=c, data=df.loc[df['Stations'].isin([category])], marker='x',
-    #              linestyle=':', label=str(category) + ' S - Step 1')
-    #     plt.plot('Samples', 'Proxy', c=c, data=df.loc[df['Stations'].isin([category])], marker='o',
-    #              linestyle=' ', label=str(category) + ' S Proxy')
-    #     plt.plot('Samples', 'Station_2', data=df.loc[df['Stations'].isin([category])], marker='x',
-    #              c=c, linestyle='-.', label=str(category) + "  S - Step 2")
-    #     plt.plot('Samples', 'Total', c=c, data=df.loc[df['Stations'].isin([category])], marker='x',
-    #              label=str(category) + ' S Total')
+    c = plt.cm.Set2
+    color = iter(c.colors)
     for category in df.Stations.unique():
-        plt.plot('Samples', 'Total', c="blue", data=df.loc[df['Stations'].isin([category])], marker='o',
-                 label=str(category) + 'Total runtime')
+        c = next(color)
+        plt.plot('Samples', 'Total', c=c, data=df.loc[df['Stations'].isin([category])], marker='o',
+                 label=str(category) + ' stations')
     plt.xlabel('Number of subjects')
     num_stations = res['stations'][0]
     plt.ylabel('Time (sec)')
-    plt.title('DPPE-AUC total runtime w/ ' + str(num_stations) + ' stations')
-    #plt.legend(loc="upper left")
-    plt.show()
-    #plt.savefig('runtime-s-' + str(num_stations) + '.png')
+    plt.title('DPPE-AUC total runtime evaluation')
+    plt.legend(loc="upper left")
+    plt.savefig('test.png')
+    #plt.show()
+
 
     # Enter raw dataF
     gt = perf['gt']
@@ -614,16 +633,14 @@ if __name__ == "__main__":
     logging.basicConfig(filename='pp-auc.log', level=logging.INFO)
     logging.info('Start PP-AUC execution')
 
-    #stations = 3  # TODO adjust
+    station_list = [3, 3, 3]
+    subject_list = [200]
 
-    protocol = False # if protocol true, then: subject_list = [20]
-    #subject_list = [15]
-
-    station_list = [3]# ,12]
-    subject_list = [25, 50, 100, 200, 400, 800, 1600] # 320, 640, 1280, 2560, 5120, 10240]
-    #per = {'time': {'stations_1': [0.0238299579990174, 0.02750213200003297, 0.04754705566544241, 0.04858811799931573, 0.09245213866718889, 0.08697813883676038], 'proxy': [0.381446125000366, 0.7966919999889797, 0.7213030839920975, 1.201679542005877, 1.0368845000048168, 1.7390484170027776], 'stations_2': [0.13467783300438896, 0.2640320829959819, 0.27925649999815505, 0.38997579099668656, 0.3639489589986624, 0.478104624999105], 'total_step_1': [0.0714898739970522, 0.1650127920001978, 0.14264116699632723, 0.29152870799589437, 0.2773564160015667, 0.5218688330205623]}, 'samples': [30, 68, 67, 133, 138, 267], 'stations': [3, 6, 3, 6, 3, 6], 'pp-auc': [0.7727272727272727, 0.6595744680851063, 0.09259259259259259, 0.4654895666131621, 0.5810936051899908, 0.5806722689075631], 'gt-auc': [0.7727272727272727, 0.6595744680851063, 0.09259259259259262, 0.4654895666131621, 0.5810936051899908, 0.580672268907563]}
-    #plot_results(per)
+    #pet = {'time': {'stations_1': [0.07080988867285971, 0.0704962848200618, 0.06722609733697027, 0.06921741325155988, 0.2540482363353173, 0.25856566649357166, 0.2780568471126672, 0.2882908018315599], 'proxy': [0.6637534170295112, 0.9436343749985099, 1.145246332976967, 1.2488354579545557, 0.9624182910192758, 1.1517062920029275, 1.3431815839721821, 1.4915807080105878], 'stations_2': [0.32046375004574656, 0.42034558398881927, 0.48202616698108613, 0.47330270800739527, 0.48691820801468566, 0.5033004159922712, 0.5349459589924663, 0.5387688750051893], 'total_step_1': [0.21242966601857916, 0.4229777089203708, 0.6050348760327324, 0.8306089590187185, 0.7621447090059519, 1.55139399896143, 2.502511624014005, 3.459489621978719]}, 'samples': [104, 204, 314, 423, 417, 809, 1252, 1685], 'stations': [3, 6, 9, 12, 3, 6, 9, 12], 'pp-auc': [0.3712121212121212, 0.46535714285714286, 0.3849018280297901, 0.5604320987654321, 0.5872822625959918, 0.4834259259259259, 0.47199588477366256, 0.5213039275539275], 'gt-auc': [0.3712121212121212, 0.4653571428571429, 0.38524035206499657, 0.5604938271604938, 0.5872822625959918, 0.4834259259259259, 0.48302469135802467, 0.5213717609550943]}
+    #plot_results(pet)
     #exit(0)
+
+
     performance = {'time':
                     {'stations_1': [],
                      'proxy': [],
@@ -651,27 +668,21 @@ if __name__ == "__main__":
             for dir in directories:
                 if not os.path.exists(dir):
                     os.makedirs(dir)
-            if protocol:
-                create_protocol_data()
-            else:
-                create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
-                pass
+
+            create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
             results = train.load_results()
             results = generate_keys(stations, results)
             # Train Building process
             train.save_results(results)
 
             # compute AUC without encryption for proof of principal of pp_auc
-            auc_gt, performance = calculate_regular_auc(stations, protocol, performance)
+            auc_gt, performance = calculate_regular_auc(stations, performance)
             performance['gt-auc'].append(auc_gt)
             logging.info('AUC value of ground truth {}'.format(auc_gt))
             print('AUC value of GT {}'.format(auc_gt))
             times = []
             for i in range(stations):
-                if protocol:
-                    stat_df = pickle.load(open('./data/synthetic/protocol_data_s' + str(i+1) + '.pkl', 'rb'))
-                else:
-                    stat_df = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
+                stat_df = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
                 logging.info('\n')
 
                 t1 = time.perf_counter()
@@ -695,13 +706,13 @@ if __name__ == "__main__":
             logging.info('\n ------ \n PROXY STATION')
 
             t3 = time.perf_counter()
-            proxy_station()
+            dppe_auc_proxy()
             t4 = time.perf_counter()
             performance['time']['proxy'].append(t4 - t3)
             print(f'Execution time by proxy station {t4 - t3:0.4f} seconds')
 
             t1 = time.perf_counter()
-            auc_pp = stations_auc(0)
+            auc_pp = dppe_auc_station_final(0)
             t2 = time.perf_counter()
             performance['time']['stations_2'].append(t2 - t1)
             print(f'Final AUC execution time at station {t2 - t1:0.4f} seconds')
@@ -710,7 +721,7 @@ if __name__ == "__main__":
 
             # for i in range(stations):
             #    AUC = stations_auc(i)
-            print('Equal GT? {}'.format(auc_gt == auc_pp))
+            #print('Equal GT? {}'.format(auc_gt == auc_pp))
             diff = auc_gt - auc_pp
             differences.append(diff)
             print('Difference pp-AUC to GT: ', diff)
@@ -719,7 +730,6 @@ if __name__ == "__main__":
         print("Avg difference {} over {} runs".format(sum(differences)/len(differences), len(differences)))
         # back up data and remove directory
         try:
-            shutil.move('./data/', './bk-data-s' + subjects + '-n-' + stations)
             shutil.rmtree('./data/')
             print('Saved prev data')
             logging.info('Saved and deleted previous results')
@@ -727,4 +737,4 @@ if __name__ == "__main__":
             logging.info('No previous files and results to remove')
 
     print(performance)
-    plot_results(performance)
+    #plot_results(performance)
