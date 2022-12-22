@@ -151,7 +151,7 @@ def proxy_decrypt(priv, cipher):
     return cipher
 
 
-def decrypt2(priv, cipher):
+def station_decrypt(priv, cipher):
     cinv = invmod(pow(cipher[0],priv.x2, priv.nsqr),priv.nsqr)
     u = ((cipher[1] * cinv % pow(priv.n,2)) - 1) % pow(priv.n,2)
     plain = u//priv.n

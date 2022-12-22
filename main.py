@@ -178,7 +178,6 @@ def calculate_regular_auc(stations, protocol, performance):
     # return exact auc to be benchmarked with
     return auc, performance
 
-
 def generate_keys(stations, results):
     """
     Generate and save keys of given numbers of stations and train results
@@ -259,7 +258,6 @@ def generate_keys(stations, results):
 
     return results
 
-
 def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, station):
     """
     Encrypt dataframe of given station with paillier public key of aggregator and random values
@@ -281,7 +279,6 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, station):
 
     return station_df
 
-
 def load_rsa_sk(path):
     """
     Return private rsa key of given file path
@@ -294,7 +291,6 @@ def load_rsa_sk(path):
         )
     return private_key
 
-
 def load_rsa_pk(path):
     """
     Return public rsa key of given file path
@@ -305,7 +301,6 @@ def load_rsa_pk(path):
             backend=default_backend()
         )
     return public_key
-
 
 def encrypt_symmetric_key(station, symmetric_key):
     """
@@ -322,7 +317,6 @@ def encrypt_symmetric_key(station, symmetric_key):
 
     return encrypted_symmetric_key
 
-
 def decrypt_symmetric_key(station, ciphertext):
     """
     Decrypt of given station rsa encrypted k_station
@@ -338,7 +332,6 @@ def decrypt_symmetric_key(station, ciphertext):
         ))
     logging.info('Symmetric key of k_{} decrypted is: {}'.format(station, decrypted_symmetric_key))
     return decrypted_symmetric_key
-
 
 def pp_auc_protocol(station_df, station=int):
     """
@@ -400,7 +393,6 @@ def pp_auc_protocol(station_df, station=int):
 
     return prev_results
 
-
 def sum_over_enc_series(encrypted_series, agg_pk):
     """
     Compute encrypted sum over given series
@@ -413,74 +405,12 @@ def sum_over_enc_series(encrypted_series, agg_pk):
             res = add(agg_pk, res, cipher)
         return res
 
-
-def compute_tp_fp_values(dataframe, agg_pk, length):
-    """
-    Compute TP and FP values given encrypted sorted dataframe
-    """
-    TP_values = []
-    FP_values = []
-
-    TP_values.insert(0, encrypt(agg_pk, 0))
-    FP_values.insert(0, encrypt(agg_pk, 0))
-
-    for i in range(1, length + 1):
-        TP_values.append(e_add(agg_pk, TP_values[i - 1], dataframe['Label'][i - 1]))
-        sum_flags = sum_over_enc_series(dataframe['Flag'][:i], agg_pk)
-        FP_values.append(e_add(agg_pk, sum_flags, mul_const(agg_pk, TP_values[-1], -1)))
-
-    return TP_values, FP_values
-
 def z_values(n):
     """
     Generate random values of list length n which sum is zero
     """
     l = random.sample(range(-int(n/2), int(n/2)), k=n-1)
     return l + [-sum(l)]
-
-
-def calc_nominator(tp_a, fp_a, agg_pk, length):
-    """
-    Calculate nominator parts given TP_A, FP_A
-    """
-    N_i1 = []
-    N_i2 = []
-    N_i3 = []
-
-    # Step 31
-    #  generate M random numbers which sum up to 0
-    # tic = time.perf_counter()
-    Z_values = z_values(length)
-    # toc = time.perf_counter()
-    # print(f'Generation time noise Z {toc - tic:0.4f} seconds')
-
-    for i in range(length):
-        r1_i = randint(1, 100)
-        r2_i = randint(1, 100)
-
-        TP_i = tp_a[i]
-        FP_i = fp_a[i]
-
-        N_i1.append(add_const(agg_pk, TP_i, r1_i))
-        N_i2.append(add_const(agg_pk, FP_i, r2_i))
-
-        N_i3_1 = mul_const(agg_pk, TP_i, r2_i)
-        N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
-        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
-        n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
-        N_i3.append(n_i_3_noise)
-    return N_i1, N_i2, N_i3
-
-
-def check_tie(list_pre):
-    """
-    Check if given list contains any duplicates
-    """
-    if len(list_pre) == len(set(list_pre)):
-        return False
-    else:
-        return True
-
 
 def proxy_station():
     """
@@ -508,26 +438,43 @@ def proxy_station():
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
     logging.info('\n')
-    print('Has tie?: {}'.format(check_tie(concat_df["Dec_pre"])))
-    #print('Concatenated (and sorted by paillier encrypted Pre) predictions of all station:')
-    # Step 24
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
-    #print(sort_df)
     df_new_index = sort_df.reset_index()
 
-    # calculate TP / FN / TN and FP with paillier summation over rows
-    # Step 25
     M = len(df_new_index)
-    TP_values, FP_values = compute_tp_fp_values(df_new_index, agg_pk, M)
+    tp_values = []
+    fp_values = []
 
-    # Step 26
+    tp_values.insert(0, encrypt(agg_pk, 0))
+    fp_values.insert(0, encrypt(agg_pk, 0))
+    tmp_sum = fp_values[0]
+    for i in range(1, M + 1):
+        tp_values.append(e_add(agg_pk, tp_values[i - 1], df_new_index['Label'][i - 1]))
+        value_add = df_new_index['Flag'][i - 1]
+        sum_flags = add(agg_pk, value_add, tmp_sum)
+        tmp_sum = sum_flags
+        fp_values.append(e_add(agg_pk, sum_flags, mul_const(agg_pk, tp_values[-1], -1)))
+
     a = randint(1, 100)
     b = randint(1, 100)
 
-    # Step 27
+    # Denominator
     # TP_A is summation of labels (TP)
-    tp_a_multiplied = mul_const(agg_pk, TP_values[-1], a)
-    fp_a_multiplied = mul_const(agg_pk, FP_values[-1], b)
+    tp_a_mul = mul_const(agg_pk, tp_values[-1], a)
+    fp_a_mul = mul_const(agg_pk, fp_values[-1], b)
+    #
+    r_1A = randint(1, 100)
+    r_2A = randint(1, 100)
+    D1 = add_const(agg_pk, tp_a_mul, r_1A)
+    D2 = add_const(agg_pk, fp_a_mul, r_2A)
+    D3_1 = mul_const(agg_pk, tp_a_mul, r_2A)
+    D3_2 = mul_const(agg_pk, fp_a_mul, r_1A)
+    D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A * r_2A))
+
+    # partial decrypt and save to train
+    results["D1"].append(proxy_decrypt(agg_sk, D1))
+    results["D2"].append(proxy_decrypt(agg_sk, D2))
+    results["D3"].append(proxy_decrypt(agg_sk, D3))
 
     # Tie condition differences between TP and FP
     # determine indexes of threshold values
@@ -538,56 +485,22 @@ def proxy_station():
             thre_ind.append(i)
 
     thre_ind = list(map(lambda x: x + 1, thre_ind)) # add one
-    sTP = []
-    dFP = []
-    # Step 28
+
     # Multiply with a and b respectively
+    Z_values = z_values(len(thre_ind)-1)
     for i in range(1, len(thre_ind)):
         pre_ind = thre_ind[i - 1]
         cur_ind = thre_ind[i]
-        sTP.append(mul_const(agg_pk, e_add(agg_pk, TP_values[cur_ind],  TP_values[pre_ind]), a))  # use sTP for nominator in tie condition
-        dFP.append(mul_const(agg_pk, e_add(agg_pk, FP_values[cur_ind], mul_const(agg_pk, FP_values[pre_ind], -1)), b))
-
-    # Step 29 Denominator
-    r_1A = randint(1, 100)
-    r_2A = randint(1, 100)
-    #D1 = add_const(agg_pk, tp_a_multiplied, r_1A)
-    #D2 = add_const(agg_pk, fp_a_multiplied, r_2A)
-    D3_1 = mul_const(agg_pk, tp_a_multiplied, r_2A)
-    D3_2 = mul_const(agg_pk, fp_a_multiplied, r_1A)
-    #D3 = add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A * r_2A))
-
-    # partial decrypt and save to train
-    results["D1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, tp_a_multiplied, r_1A)))
-    results["D2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, fp_a_multiplied, r_2A)))
-    results["D3"].append(proxy_decrypt(agg_sk, add(agg_pk, D3_1, add_const(agg_pk, D3_2, r_1A * r_2A))))
-
-
-    # Step 30 & 31
-    #  generate M random numbers which sum up to 0
-    # tic = time.perf_counter()
-    Z_values = z_values(len(sTP))
-    # toc = time.perf_counter()
-    # print(f'Generation time noise Z {toc - tic:0.4f} seconds')
-
-    for i in range(len(sTP)):
+        dFP_t = mul_const(agg_pk, e_add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
+        sTP_t = mul_const(agg_pk, e_add(agg_pk, tp_values[cur_ind],  tp_values[pre_ind]), a)
         r1_i = randint(1, 100)
         r2_i = randint(1, 100)
-        results["N1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, sTP[i], r1_i)))
-        results["N2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, dFP[i], r2_i)))
-        N_i3_1 = mul_const(agg_pk, sTP[i], r2_i)
-        N_i3_2 = mul_const(agg_pk, dFP[i], r1_i)
+        results["N1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, sTP_t, r1_i)))
+        results["N2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, dFP_t, r2_i)))
+        N_i3_1 = mul_const(agg_pk, sTP_t, r2_i)
+        N_i3_2 = mul_const(agg_pk, dFP_t, r1_i)
         N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
-        results["N3"].append(proxy_decrypt(agg_sk, add_const(agg_pk, N_i3_a, Z_values[i])))
-
-    debugging = False
-
-    if debugging:
-        print("TP_dec: {}".format([decrypt(agg_sk, x) for x in TP_values]))
-        print("FP_dec: {}".format([decrypt(agg_sk, x) for x in FP_values]))
-        print('Len Tre: {}'.format(len(thre_ind)))
-        print('Thresholds: {}'.format(thre_ind))
-        print('#  Subj: {}'.format(M))
+        results["N3"].append(proxy_decrypt(agg_sk, add_const(agg_pk, N_i3_a, Z_values[i-1])))
 
     train.save_results(results)
 
@@ -602,16 +515,16 @@ def stations_auc(station):
     logging.info('Station {}:\n'.format(station+1))
 
     # decrypt random components D1, D2, D3, Ni1, Ni2, Ni3
-    D1 = decrypt2(agg_sk_2, train_results['D1'][0])
-    D2 = decrypt2(agg_sk_2, train_results['D2'][0])
-    D3 = decrypt2(agg_sk_2, train_results['D3'][0])
+    D1 = station_decrypt(agg_sk_2, train_results['D1'][0])
+    D2 = station_decrypt(agg_sk_2, train_results['D2'][0])
+    D3 = station_decrypt(agg_sk_2, train_results['D3'][0])
 
     N = 0
 
     for j in range(len(train_results['N1'])):
-        n_i1 = decrypt2(agg_sk_2, train_results['N1'][j])
-        n_i2 = decrypt2(agg_sk_2, train_results['N2'][j])
-        n_i3 = decrypt2(agg_sk_2, train_results['N3'][j])
+        n_i1 = station_decrypt(agg_sk_2, train_results['N1'][j])
+        n_i2 = station_decrypt(agg_sk_2, train_results['N2'][j])
+        n_i3 = station_decrypt(agg_sk_2, train_results['N3'][j])
 
         if n_i3 != 0 and int(math.log10(n_i3)) + 1 >= 10:
             n_i3 = -(agg_pk.n - n_i3)
