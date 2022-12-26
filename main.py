@@ -1,5 +1,4 @@
 import copy
-import logging
 import os
 import pickle
 import shutil
@@ -18,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from matplotlib.pyplot import cm
 from matplotlib.cm import get_cmap
 from sklearn import metrics
-from paillier.paillier import *
+from paillier2.paillier import *
 
 class Train:
     def __init__(self, results=None):
@@ -52,9 +51,9 @@ class Train:
                     'D1': [],
                     'D2': [],
                     'D3': [],
-                    'N1': {},
-                    'N2': {},
-                    'N3': {},
+                    'N1': [],
+                    'N2': [],
+                    'N3': [],
                     }
 
     def save_results(self, results):
@@ -150,7 +149,7 @@ def generate_keys(stations, results):
     """
     for i in range(stations):
         # paillier keys
-        sk, pk = generate_keypair(128)
+        sk, pk = generate_keypair(3072)
         pickle.dump(sk, open('./data/keys/s' + str(i+1) + '_paillier_sk.p', 'wb'))
         pickle.dump(pk, open('./data/keys/s' + str(i+1) + '_paillier_pk.p', 'wb'))
         results['stations_paillier_pk'][i] = pk
@@ -183,7 +182,7 @@ def generate_keys(stations, results):
         results['stations_rsa_pk'][i] = public_pem
 
     # generate keys of aggregator
-    sk, pk = generate_keypair(128)
+    sk, pk = generate_keypair(3072)
     sk_1 = copy.copy(sk)
     sk_2 = copy.copy(sk)
     # simulate private key separation
@@ -219,30 +218,22 @@ def generate_keys(stations, results):
         f.write(public_pem)
 
     results['aggregator_rsa_pk'] = public_pem
-    logging.info('Keys created for {} stations and aggregator station'.format(stations))
-    logging.info('Added rsa and paillier pks of stations and aggregator to results')
 
     return results
 
-def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, station):
+def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key):
     """
-    Encrypt dataframe of given station with paillier public key of aggregator and random values
+    Encrypt dataframe of given station dataframe with paillier public key of aggregator and random values
     """
-    logging.info('Start encrypting table with {} subjects from station {}'.format(len(station_df), station))
     #print('Start encrypting table with {} subjects from station {}'.format(len(station_df), station))
-    tic = time.perf_counter()
-    # Just trivial implementation - improve with vectorizing and
+    #tic = time.perf_counter()
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
     station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(2, 'big')))
-    # Step 1
     station_df["Label"] = station_df["Label"].apply(lambda x: encrypt(agg_pk, x))
     station_df["Flag"] = station_df["Flag"].apply(lambda x: encrypt(agg_pk, x))
-    toc = time.perf_counter()
+    #toc = time.perf_counter()
     #print(f'Encryption time of table {toc - tic:0.4f} seconds')
-    logging.info(f'Encryption time {toc - tic:0.4f} seconds')
-    #print(f'Encryption time {toc - tic:0.4f} seconds')
-
     return station_df
 
 def load_rsa_sk(path):
@@ -273,7 +264,6 @@ def encrypt_symmetric_key(station, symmetric_key):
     Encrypt symmetric key_station with public rsa key of aggregator
     return: encrypted_symmetric_key
     """
-    logging.info('Symmetric key of k_{} is: {}'.format(station, symmetric_key))
     rsa_agg_pk = load_rsa_pk('./data/keys/agg_rsa_public_key.pem')
     encrypted_symmetric_key = rsa_agg_pk.encrypt(symmetric_key, padding.OAEP(
                                                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -287,7 +277,6 @@ def decrypt_symmetric_key(station, ciphertext):
     """
     Decrypt of given station rsa encrypted k_station
     """
-    logging.info('Symmetric key of k_{} encrypted is: {}'.format(station, ciphertext))
     rsa_agg_sk = load_rsa_sk('./data/keys/agg_rsa_private_key.pem')
     decrypted_symmetric_key = rsa_agg_sk.decrypt(
         ciphertext,
@@ -296,7 +285,6 @@ def decrypt_symmetric_key(station, ciphertext):
          algorithm=hashes.SHA256(),
          label=None
         ))
-    logging.info('Symmetric key of k_{} decrypted is: {}'.format(station, decrypted_symmetric_key))
     return decrypted_symmetric_key
 
 def pp_auc_protocol(station_df, station=int):
@@ -306,53 +294,36 @@ def pp_auc_protocol(station_df, station=int):
     prev_results = train.load_results()  # loading results simulates pull of image
     agg_pk = prev_results['aggregator_paillier_pk']
     if station == 1:
-        # Step 2
         r1 = randint(1, 100)  # random value between 1 to 100
         r2 = randint(1, 100)
 
         symmetric_key = Fernet.generate_key()  # represents k1
-        enc_table = encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, station)
-
+        enc_table = encrypt_table(station_df, agg_pk, r1, r2, symmetric_key)
         # Save for transparency the table - not required
         enc_table.to_pickle('./data/encrypted/data_s' + str(station) + '.pkl')
 
-        # Step 3 - 1
         enc_symmetric_key = encrypt_symmetric_key(station, symmetric_key)
-        # Step 3 - 2 (partial Decrypt enc(k) with x1 of pk
-        # used RSA encryption of symmetric key (Fernet) - Document and ask Mete
-        #partial_private_key = pickle.load(open('./data/keys/agg_sk.p', 'rb'))
-        #partial_decrypted = proxy_decrypt(partial_private_key, symmetric_key)
-
         prev_results['encrypted_ks'].append(enc_symmetric_key)
 
-        # Step 4
         for i in range(len(prev_results['stations_rsa_pk'])):
             enc_r1 = encrypt(prev_results['stations_paillier_pk'][i], r1)  # homomorphic encryption used
             enc_r2 = encrypt(prev_results['stations_paillier_pk'][i], r2)
-            # Step 5
             prev_results['encrypted_r1'][i] = enc_r1
             prev_results['encrypted_r2'][i] = enc_r2
-            logging.info('Store with pk of stations encrypted r1 value {} as {}'.format(r1, enc_r1))
-            logging.info('Store with pk of stations encrypted r2 value {} as {}'.format(r2, enc_r2))
 
     else:
-        # Step 7
         enc_r1 = prev_results['encrypted_r1'][station-1]
         sk_s_i = pickle.load(open('./data/keys/s' + str(station) + '_paillier_sk.p', 'rb'))
-        # Step 8
         dec_r1 = decrypt(sk_s_i, enc_r1)
-        logging.info('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r1, dec_r1))
+
         enc_r2 = prev_results['encrypted_r2'][station-1]
         dec_r2 = decrypt(sk_s_i, enc_r2)
-        logging.info('Decrypted at station {} encrypted r1 {} to {}'.format(station, enc_r2, dec_r2))
 
-        # Step 9 / 10
         symmetric_key = Fernet.generate_key()  # represents k_2 to k_n
-        enc_table = encrypt_table(station_df, agg_pk, dec_r1, dec_r2, symmetric_key, station)
+        enc_table = encrypt_table(station_df, agg_pk, dec_r1, dec_r2, symmetric_key)
+        enc_table.to_pickle('./data/encrypted/data_s' + str(station) + '.pkl')
 
-        # Step 11
         enc_symmetric_key = encrypt_symmetric_key(station, symmetric_key)
-        # Step 12
         prev_results['encrypted_ks'].append(enc_symmetric_key)
 
     prev_results['pp_auc_tables'][station-1] = enc_table
@@ -366,65 +337,10 @@ def z_values(n):
     l = random.sample(range(-int(n/2), int(n/2)), k=n-1)
     return l + [-sum(l)]
 
-def calc_nominator(tp_a, fp_a, agg_pk, length):
-    """
-    Calculate nominator parts given TP_A, FP_A
-    """
-    N_i1 = []
-    N_i2 = []
-    N_i3 = []
-
-    N_i3_noise_free = []
-    # Step 31
-    #  generate M random numbers which sum up to 0
-    # tic = time.perf_counter()
-    Z_values = z_values(length)
-    # toc = time.perf_counter()
-    # print(f'Generation time noise Z {toc - tic:0.4f} seconds')
-
-    for i in range(length):
-        r1_i = randint(1, 100)
-        r2_i = randint(1, 100)
-
-        TP_i = tp_a[i]
-        FP_i = fp_a[i]
-
-        N_i1.append(add_const(agg_pk, TP_i, r1_i))
-        N_i2.append(add_const(agg_pk, FP_i, r2_i))
-
-        N_i3_1 = mul_const(agg_pk, TP_i, r2_i)
-        N_i3_2 = mul_const(agg_pk, FP_i, r1_i)
-        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i)) #with N=11
-        #N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, add_const(agg_pk, N_i3_2, r1_i * r2_i), 1))
-        #Ni3dec = decrypt(agg_sk, N_i3_a)
-        #print("Dec_Ni3",Ni3dec)
-        # Add z values to N_i3_a
-        #print(Z_values[i])
-        #n_i_3_noise = N_i3_a
-        N_i3_noise_free.append(N_i3_a)
-        n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
-        #if Ni3dec + Z_values[i] >= 0:
-        #    n_i_3_noise = add_const(agg_pk, N_i3_a, Z_values[i])
-        #else:
-            # if Ni_3 gets negative
-            #noise_final.append(Z_values[i])
-            #n_i_index.append(i)
-            #n_i3_neg.append(Ni3dec)
-            #n_i_3_noise = Ni3dec + Z_values[i]
-        N_i3.append(n_i_3_noise)
-        #print("Dec_Ni3_noise", decrypt(agg_sk, n_i_3_noise))
-    #print("N3 noise free", [decrypt(agg_sk, x) for x in N_i3_noise_free])
-    #print("Sum ", sum(noise_final))
-    #print("Noise ", noise_final)
-    #print("Index ", n_i_index)
-    #print("Ni ", n_i3_neg)
-    return N_i1, N_i2, N_i3
-
 def dppe_auc_proxy():
     """
-    Simulation of aggregator service - globally computes privacy preserving AUC table
+    Simulation of aggregator service - globally computes privacy preserving AUC table as proxy station
     """
-    # Step 21
     results = train.load_results()
     agg_pk = results['aggregator_paillier_pk']
     agg_sk = pickle.load(open('./data/keys/agg_sk_1.p', 'rb'))
@@ -433,11 +349,9 @@ def dppe_auc_proxy():
     df_list = []
     for i in range(len(results['encrypted_ks'])):
         enc_k_i = results['encrypted_ks'][i]
-        # Step 22
         dec_k_i = decrypt_symmetric_key(i, enc_k_i)
-        logging.info('Decrypted k value {} of station {}'.format(dec_k_i, i + 1))
 
-        # Step 23 decrypt table values with Fernet and corresponding k_i symmetric key
+        # decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
         table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x))  # returns bytes
         table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
@@ -445,7 +359,6 @@ def dppe_auc_proxy():
 
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
-    logging.info('\n')
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
     df_new_index = sort_df.reset_index()
 
@@ -457,11 +370,10 @@ def dppe_auc_proxy():
     fp_values.insert(0, encrypt(agg_pk, 0))
     tmp_sum = fp_values[0]
     for i in range(1, M + 1):
-        tp_values.append(e_add(agg_pk, tp_values[i - 1], df_new_index['Label'][i - 1]))
-        value_add = df_new_index['Flag'][i - 1]
-        sum_flags = add(agg_pk, value_add, tmp_sum)
+        tp_values.append(add(agg_pk, tp_values[i - 1], df_new_index['Label'][i - 1]))
+        sum_flags = add(agg_pk, df_new_index['Flag'][i - 1], tmp_sum)
         tmp_sum = sum_flags
-        fp_values.append(e_add(agg_pk, sum_flags, mul_const(agg_pk, tp_values[-1], -1)))
+        fp_values.append(add(agg_pk, sum_flags, mul_const(agg_pk, tp_values[-1], -1)))
 
     a = randint(1, 100)
     b = randint(1, 100)
@@ -493,55 +405,33 @@ def dppe_auc_proxy():
             thre_ind.append(i)
 
     thre_ind = list(map(lambda x: x + 1, thre_ind)) # add one
-    sTP = []
-    dFP = []
-    #FP_values.insert(0, encrypt(agg_pk, 0))
-    #TP_values.insert(0, encrypt(agg_pk, 0))
 
+    # Multiply with a and b respectively
+    Z_values = z_values(len(thre_ind) - 1)
     for i in range(1, len(thre_ind)):
         pre_ind = thre_ind[i - 1]
         cur_ind = thre_ind[i]
-        sTP.insert(i - 1, e_add(agg_pk, tp_values[cur_ind],  tp_values[pre_ind]))
-        dFP.insert(i - 1, e_add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)))
-    # Multiply with a and b respectively
-    # Z_values = z_values(len(thre_ind)-1)
-    # for i in range(1, len(thre_ind)):
-    #     pre_ind = thre_ind[i - 1]
-    #     cur_ind = thre_ind[i]
-    #     dFP_t = mul_const(agg_pk, e_add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
-    #     sTP_t = mul_const(agg_pk, e_add(agg_pk, tp_values[cur_ind],  tp_values[pre_ind]), a)
-    #     r1_i = randint(1, 100)
-    #     r2_i = randint(1, 100)
-    #     results["N1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, sTP_t, r1_i)))
-    #     results["N2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, dFP_t, r2_i)))
-    #     N_i3_1 = mul_const(agg_pk, sTP_t, r2_i)
-    #     N_i3_2 = mul_const(agg_pk, dFP_t, r1_i)
-    #     N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
-    #     results["N3"].append(proxy_decrypt(agg_sk, add_const(agg_pk, N_i3_a, Z_values[i-1])))
-    #
-    TP_is: Any = []
-    FP_is: Any = []
-    # Step 28
-    # Multiply with a and b respectively
-    for i in range(1, len(thre_ind)):
-        TP_is.append(mul_const(agg_pk, sTP[i - 1], a))  # use sTP for nominator in tie condition
-        FP_is.append(mul_const(agg_pk, dFP[i - 1], b))
+        # Multiply with a and b respectively
+        sTP_a = mul_const(agg_pk, add(agg_pk, tp_values[cur_ind],  tp_values[pre_ind]), a)
+        dFP_b = mul_const(agg_pk, add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
+        r1_i = randint(1, 100)
+        r2_i = randint(1, 100)
+        results["N1"].append(proxy_decrypt(agg_sk, add_const(agg_pk, sTP_a, r1_i)))
+        results["N2"].append(proxy_decrypt(agg_sk, add_const(agg_pk, dFP_b, r2_i)))
+        N_i3_1 = mul_const(agg_pk, sTP_a, r2_i)
+        N_i3_2 = mul_const(agg_pk, dFP_b, r1_i)
+        N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
+        results["N3"].append(proxy_decrypt(agg_sk, add_const(agg_pk, N_i3_a, Z_values[i - 1])))
 
-    # Step 30
-    N_i1, N_i2, N_i3 = calc_nominator(TP_is, FP_is, agg_pk, len(thre_ind) - 1)
-    results["N1"] = [proxy_decrypt(agg_sk, x) for x in N_i1]
-    results["N2"] = [proxy_decrypt(agg_sk, x) for x in N_i2]
-    results["N3"] = [proxy_decrypt(agg_sk, x) for x in N_i3]
     train.save_results(results)
 
 def dppe_auc_station_final(station):
     """
-    Simulation of station delegated AUC parts to compute global AUC locally
+    Simulation of station delegated AUC parts to compute global DPPE-AUC locally
     """
     train_results = train.load_results()
-    agg_sk_2 = pickle.load(open('./data/keys/agg_sk_2.p', 'rb')) # todo split sk in sk_1 and sk_2
+    agg_sk_2 = pickle.load(open('./data/keys/agg_sk_2.p', 'rb'))
     agg_pk = train_results['aggregator_paillier_pk']
-    logging.info('Station {}:\n'.format(station+1))
 
     # decrypt random components D1, D2, D3, Ni1, Ni2, Ni3
     D1 = station_decrypt(agg_sk_2, train_results['D1'][0])
@@ -549,7 +439,6 @@ def dppe_auc_station_final(station):
     D3 = station_decrypt(agg_sk_2, train_results['D3'][0])
 
     N = 0
-
     for j in range(len(train_results['N1'])):
         n_i1 = station_decrypt(agg_sk_2, train_results['N1'][j])
         n_i2 = station_decrypt(agg_sk_2, train_results['N2'][j])
@@ -567,7 +456,6 @@ def dppe_auc_station_final(station):
         auc = 0
     else:
         auc = (N / D) / 2
-    logging.info('PP-AUC: {0:.3f}'.format(auc))
     print('PP-AUC: {}'.format(auc))
     return auc
 
@@ -592,54 +480,17 @@ def plot_results(res):
     plt.savefig('test.png')
     #plt.show()
 
-
-    # Enter raw dataF
     gt = perf['gt']
     #print(gt)
     pp = perf['pp']
     diff = gt - pp
     print(diff)
 
-    # Calculate the average
-    gt_mean = np.mean(diff)
-    pp_mean = np.mean(pp)
-
-    # Calculate the standard deviation
-    gt_std = np.std(diff)
-    pp_std = np.std(pp)
-
-    # Create lists for the plot
-    materials = ['GT-AUC']
-    x_pos = np.arange(len(materials))
-    CTEs = [gt_mean]
-    error = [gt_std]
-
-    # fig, ax = plt.subplots()
-    # sns.boxplot(x=np.zeros(len(diff)), y=diff)
-    # ax.set_ylabel('difference')
-    # ax.set_xticks(x_pos)
-    # ax.set_xticklabels(materials)
-    # ax.set_title('AUC difference GT to PP')
-    # ax.yaxis.grid(True)
-
-    # Save the figure and show
-    #plt.tight_layout()
-    #plt.savefig('bar_plot_with_error_bars.png')
-    #plt.show()
-
 
 if __name__ == "__main__":
-    # Configuration
-    logging.basicConfig(filename='pp-auc.log', level=logging.INFO)
-    logging.info('Start PP-AUC execution')
 
-    station_list = [3, 3, 3]
-    subject_list = [200]
-
-    #pet = {'time': {'stations_1': [0.07080988867285971, 0.0704962848200618, 0.06722609733697027, 0.06921741325155988, 0.2540482363353173, 0.25856566649357166, 0.2780568471126672, 0.2882908018315599], 'proxy': [0.6637534170295112, 0.9436343749985099, 1.145246332976967, 1.2488354579545557, 0.9624182910192758, 1.1517062920029275, 1.3431815839721821, 1.4915807080105878], 'stations_2': [0.32046375004574656, 0.42034558398881927, 0.48202616698108613, 0.47330270800739527, 0.48691820801468566, 0.5033004159922712, 0.5349459589924663, 0.5387688750051893], 'total_step_1': [0.21242966601857916, 0.4229777089203708, 0.6050348760327324, 0.8306089590187185, 0.7621447090059519, 1.55139399896143, 2.502511624014005, 3.459489621978719]}, 'samples': [104, 204, 314, 423, 417, 809, 1252, 1685], 'stations': [3, 6, 9, 12, 3, 6, 9, 12], 'pp-auc': [0.3712121212121212, 0.46535714285714286, 0.3849018280297901, 0.5604320987654321, 0.5872822625959918, 0.4834259259259259, 0.47199588477366256, 0.5213039275539275], 'gt-auc': [0.3712121212121212, 0.4653571428571429, 0.38524035206499657, 0.5604938271604938, 0.5872822625959918, 0.4834259259259259, 0.48302469135802467, 0.5213717609550943]}
-    #plot_results(pet)
-    #exit(0)
-
+    station_list = [3]
+    subject_list = [10,20,30]
 
     performance = {'time':
                     {'stations_1': [],
@@ -660,10 +511,8 @@ if __name__ == "__main__":
             performance['stations'].append(stations)
             try:
                 shutil.rmtree('./data/')
-                logging.info('Backuped and deleted previous results')
             except Exception as e:
-                logging.info('No previous files and results to remove')
-
+                print(e)
             directories = ['./data', './data/keys', './data/synthetic', './data/encrypted', './data/pht_results']
             for dir in directories:
                 if not os.path.exists(dir):
@@ -672,18 +521,16 @@ if __name__ == "__main__":
             create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
             results = train.load_results()
             results = generate_keys(stations, results)
-            # Train Building process
+            # Mimic train building process
             train.save_results(results)
 
-            # compute AUC without encryption for proof of principal of pp_auc
+            # compute AUC without encryption for proof of concept
             auc_gt, performance = calculate_regular_auc(stations, performance)
             performance['gt-auc'].append(auc_gt)
-            logging.info('AUC value of ground truth {}'.format(auc_gt))
             print('AUC value of GT {}'.format(auc_gt))
             times = []
             for i in range(stations):
                 stat_df = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
-                logging.info('\n')
 
                 t1 = time.perf_counter()
                 results = pp_auc_protocol(stat_df, station=i+1)
@@ -692,18 +539,15 @@ if __name__ == "__main__":
 
                 # remove at last station all encrypted noise values
                 if i is stations - 1:
-                    logging.info('Remove paillier_pks and all encrypted r1 and r2 values')
                     results.pop('encrypted_r1')
                     results.pop('encrypted_r2')
 
                 train.save_results(results)  # saving results simulates push of image
-                logging.info('Stored train results')
 
             print(f'Total execution time at stations {sum(times):0.4f} seconds')
             print(f'Average execution time at stations {sum(times)/len(times):0.4f} seconds')
             performance['time']['stations_1'].append(sum(times)/len(times))
             performance['time']['total_step_1'].append(sum(times))
-            logging.info('\n ------ \n PROXY STATION')
 
             t3 = time.perf_counter()
             dppe_auc_proxy()
@@ -719,22 +563,12 @@ if __name__ == "__main__":
 
             performance['pp-auc'].append(auc_pp)
 
-            # for i in range(stations):
-            #    AUC = stations_auc(i)
-            #print('Equal GT? {}'.format(auc_gt == auc_pp))
             diff = auc_gt - auc_pp
             differences.append(diff)
             print('Difference pp-AUC to GT: ', diff)
             print('\n')
 
         print("Avg difference {} over {} runs".format(sum(differences)/len(differences), len(differences)))
-        # back up data and remove directory
-        try:
-            shutil.rmtree('./data/')
-            print('Saved prev data')
-            logging.info('Saved and deleted previous results')
-        except Exception as e:
-            logging.info('No previous files and results to remove')
 
     print(performance)
-    #plot_results(performance)
+    plot_results(performance)

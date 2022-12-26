@@ -6,3 +6,5 @@ cryptography
 phe
 scikit-learn
 seaborn
+Crypto
+gmpy2
