@@ -3,4 +3,4 @@
 data/
 *.xml
 .idea/.DS_Store
-.DS_Store
+*.DS_Store
