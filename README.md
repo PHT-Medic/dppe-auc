@@ -13,9 +13,12 @@ The performance is evaluated against the commonly standard sklearn AUC library.
 ### Varying number of input parties
 In experiment 1 the number of samples are identical, but the number of input parties varies.
 The execution time is calculated absolute with each step and party for 10 runs. Therefore, the total execution time differs with the number of input parties.
-![plot](./exp1_sub.png)
+
+![plot 1](./plots/exp1_sub.png)
+
 
 ### Varying number of input samples
 In experiment 2 the number of samples are increasing with 3 stations.
 The total execution increases with the number of samples to encrypt and decrypt.
-![plot](./exp2.png)
+
+![plot 2](./plots/exp2.png)
