@@ -1,39 +1,7 @@
 import math
-from .primes import generate_prime
 import random
+from .util import invert, isInvertible, powmod, mulmod, getprimeover, isqrt
 
-def invmod(a, p, maxiter=1000000):
-    """The multiplicitive inverse of a in the integers modulo p:
-         a * b == 1 mod p
-       Returns b.
-       (http://code.activestate.com/recipes/576737-inverse-modulo-p/)"""
-    if a == 0:
-        raise ValueError('0 has no inverse mod %d' % p)
-    r = a
-    d = 1
-    for i in range(min(p, maxiter)):
-        d = ((p // r + 1) * d) % p
-        r = (d * a) % p
-        if r == 1:
-            break
-    else:
-        raise ValueError('%d has no inverse mod %d' % (a, p))
-
-    return d
-
-
-def modpow(base, exponent, modulus):
-    """Modular exponent:
-         c = b ^ e mod m
-       Returns c.
-       (http://www.programmish.com/?p=34)"""
-    result = 1
-    while exponent > 0:
-        if exponent & 1 == 1:
-            result = (result * base) % modulus
-        exponent = exponent >> 1
-        base = (base * base) % modulus
-    return result
 
 
 class PrivateKey(object):
@@ -53,107 +21,77 @@ class PublicKey(object):
         self.n = n
         self.g = g
         self.nsqr = pow(n,2)
-        self.h = pow(g,x,self.nsqr)
+        self.h = powmod(g,x,self.nsqr)
+        self.r = pow(128,2)
 
     def __repr__(self):
         return '<PublicKey: %s %s %s>' % (self.n, self.g, self.h)
 
 
-def isinvmod(a, p, maxiter= 1000000):
-    """The multiplicitive inverse of a in the integers modulo p:
-         a * b == 1 mod p
-       Returns b.
-       (http://code.activestate.com/recipes/576737-inverse-modulo-p/)"""
-    if a == 0:
-        return False
-    #raise ValueError('0 has no inverse mod %d' % p)
-    r = a
-    d = 1
-    for i in range(min(p, maxiter)):
-        d = ((p // r + 1) * d) % p
-        r = (d * a) % p
-        if r == 1:
-            break
-    else:
-        return False
-        #raise ValueError('%d has no inverse mod %d' % (a, p))
-    return True
-
-
 def randomElement(n):
-    g = random.randrange(1, n, 1)
+    g = random.SystemRandom().randrange(1, n)
     while True:
-        if isinvmod(g,n):
+        if isInvertible(g,n):
             break
         else:
-            g = random.randrange(1, n, 1)
+            g = random.SystemRandom().randrange(1, n)
 
     return g
+
 
 def chooseG(n):
     a = randomElement(pow(n,2))
-    g = pow((-1*a),(2*n),pow(n,2))
+    g = powmod((-1*a),(2*n),pow(n,2))
     return g
 
 def generate_keypair(bits):
-    p = generate_prime(bits)
-    q = generate_prime(bits)
+    p = getprimeover(bits // 2)
+    q = getprimeover(bits // 2)
     n = p * q
-    x = random.randrange(1, pow(n,2)>>1, 1)
+    x = random.SystemRandom().randrange(1, pow(n,2)>>1)
     g = chooseG(n)
     return PrivateKey(n, x), PublicKey(n,g,x)
 
 
 def encrypt(pub, plain):
-    r = random.randrange(1, pub.n/4, 1)
-    c1 = pow(pub.g,r,pub.nsqr)
-    c2 = (pow(pub.h,r,pub.nsqr) * (1+((plain * pub.n) % pub.nsqr) % pub.nsqr)) % pub.nsqr
+    r = random.SystemRandom().randrange(1, pub.r)
+    c1 = powmod(pub.g,r,pub.nsqr)
+    c2 = (powmod(pub.h,r,pub.nsqr) * (1+((plain * pub.n) % pub.nsqr) % pub.nsqr)) % pub.nsqr
     return [c1,c2]
 
 
 def add(pub, a, b):
     """Add one encrypted integer to another"""
-    return [a[0] * b[0] % pub.nsqr, a[1] * b[1] % pub.nsqr]
-
-
-def e_add(pub, a, b):
-    """Add one encrypted integer to another"""
-    return [a[0] * b[0] % pub.nsqr, a[1] * b[1] % pub.nsqr]
-
-
-def e_mul_const(pub, a, n):
-    """Multiplies an ancrypted integer by a constant"""
-    return [pow(a[0],n,pub.nsqr), pow(a[1],n,pub.nsqr)]
-
+    return [mulmod(a[0],b[0],pub.nsqr), mulmod(a[1],b[1],pub.nsqr)]
 
 
 def mul_const(pub, a, n):
     """Multiplies an ancrypted integer by a constant"""
-    return [pow(a[0],n,pub.nsqr), pow(a[1],n,pub.nsqr)]
+    return [powmod(a[0],n,pub.nsqr), powmod(a[1],n,pub.nsqr)]
 
 
 def add_const(pub, a, n):
     """Add one encrypted integer to a constant"""
     b = encrypt(pub, n)
-    return [a[0] * b[0] % pub.nsqr, a[1] * b[1] % pub.nsqr]
+    return [mulmod(a[0],b[0],pub.nsqr), mulmod(a[1],b[1],pub.nsqr)]
 
 
 def decrypt(priv, cipher):
-    cinv = invmod(pow(cipher[0],priv.x, priv.nsqr),priv.nsqr)
-    u = ((cipher[1] * cinv % priv.nsqr) - 1) % priv.nsqr
+    cinv = invert(powmod(cipher[0],priv.x,priv.nsqr),priv.nsqr)
+    u = mulmod(cipher[1], cinv, priv.nsqr) - 1
     plain = u//priv.n
     return plain
 
 
 def proxy_decrypt(priv, cipher):
-    cinv = invmod(pow(cipher[0],priv.x1, priv.nsqr),priv.nsqr)
-    cipher[1] = cipher[1] * cinv % priv.nsqr
+    cinv = invert(powmod(cipher[0],priv.x1,priv.nsqr),priv.nsqr)
+    cipher[1] = mulmod(cipher[1], cinv, priv.nsqr)
     return cipher
 
 
 def station_decrypt(priv, cipher):
-    cinv = invmod(pow(cipher[0],priv.x2, priv.nsqr),priv.nsqr)
-    u = ((cipher[1] * cinv % pow(priv.n,2)) - 1) % pow(priv.n,2)
+    cinv = invert(powmod(cipher[0],priv.x2,priv.nsqr),priv.nsqr)
+    u = mulmod(cipher[1], cinv, priv.nsqr) - 1
     plain = u//priv.n
     return plain
 

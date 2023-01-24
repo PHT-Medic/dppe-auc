@@ -6,7 +6,6 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from typing import Any
 from random import randint
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
@@ -14,10 +13,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
-from matplotlib.pyplot import cm
-from matplotlib.cm import get_cmap
 from sklearn import metrics
-from paillier2.paillier import *
+from paillier.paillier import *
 
 class Train:
     def __init__(self, results=None):
@@ -54,8 +51,6 @@ class Train:
                     'N1': [],
                     'N2': [],
                     'N3': [],
-                    'N1_t': [],
-                    'N3_t': [],
                     }
 
     def save_results(self, results):
@@ -84,13 +79,13 @@ def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
                     "Flag": np.random.choice(np.concatenate([[1] * samples, [0] * fake_data_val]),
                                              samples+fake_data_val, replace=False)}
 
-            df = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
-            df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
+            df_2 = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
+            df_2.loc[df_2["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
 
-            if not np.all(df["Label"] == 1):
+            if not np.all(df_2["Label"] == 1):
                 valid = True
 
-            df.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
+            df_2.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
 
 def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients=None):
     """
@@ -108,13 +103,13 @@ def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients
                     "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
                     "Flag": np.random.choice(np.concatenate([[1] * samples_each, [0] * fake_data_val]),
                                              samples_each, replace=False)}
-            df = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
-            df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
+            df_1 = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
+            df_1.loc[df_1["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
 
-            if not np.all(df["Label"] == 1):
+            if not np.all(df_1["Label"] == 1):
                 valid = True
 
-            df.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
+            df_1.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
 
 def calculate_regular_auc(stations, performance):
     """
@@ -126,48 +121,21 @@ def calculate_regular_auc(stations, performance):
         lst_df.append(df_i)
 
     concat_df = pd.concat(lst_df)
-    #print('All unique Pre? ', concat_df["Pre"].is_unique)
     performance['samples'].append(len(concat_df))
     print('Use data from {} stations. Total of {} subjects (including flag subjects) '.format(stations, len(concat_df)))
 
     #sort_df = concat_df.sort_values(by='Pre', ascending=False).reset_index()
     sort_df = concat_df.sort_values(by='Pre', ascending=False)
 
-    debugging = False
-
-    if debugging:
-        print("Data Predi: {}".format(sort_df["Pre"].to_list()))
-        print("Data Label: {}".format(sort_df["Label"].to_list()))
-        print("Data Flags: {}".format(sort_df["Flag"].to_list()))
     filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
-    # iterate over sorted list
-    # auc = 0.0
-    # height = 0.0
     dfd = filtered_df.copy()
     dfd["Pre"] = filtered_df["Pre"] / 100
     y = dfd["Label"]
     pred = dfd["Pre"]
 
-    #fpr, tpr, _ = metrics.roc_curve(y, pred, pos_label=1)
-    #auc = metrics.auc(fpr, tpr)
-    auc = metrics.roc_auc_score(y, pred)
+    gt = metrics.roc_auc_score(y, pred)
 
-
-    # plt.figure()
-    # lw = 1
-    # plt.plot(fpr, tpr, color='darkorange',
-    #          lw=lw, label='ROC curve (area = %0.2f)' % metrics.auc(fpr, tpr))
-    # plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-    # plt.xlim([0.0, 1.0])
-    # plt.ylim([0.0, 1.05])
-    # plt.xlabel('False Positive Rate')
-    # plt.ylabel('True Positive Rate')
-    # plt.title('ROC of ground truth')
-    # plt.legend(loc="lower right")
-    # plt.show()
-
-    # return exact auc to be benchmarked with
-    return auc, performance
+    return gt, performance
 
 def generate_keys(stations, results):
     """
@@ -434,13 +402,10 @@ def dppe_auc_proxy():
             thre_ind.append(i)
 
     thre_ind = list(map(lambda x: x + 1, thre_ind)) # add one
-    # sum over all n_3 and only store n_3
     # Multiply with a and b respectively
     Z_values = z_values(len(thre_ind) - 1)
-    #n_1_tmp = []
-    #n_1_tmp.insert(0, encrypt(agg_pk, 0))
-    #N_1_sum = encrypt(agg_pk, 0)
-    #N_2_sum = encrypt(agg_pk, 0)
+
+    # sum over all n_3 and only store n_3
     N_3_sum = encrypt(agg_pk, 0)
     for i in range(1, len(thre_ind)):
         pre_ind = thre_ind[i - 1]
@@ -453,25 +418,18 @@ def dppe_auc_proxy():
 
         n_1 = add_const(agg_pk, sTP_a, r1_i)
         results["N1"].append(proxy_decrypt(agg_sk, n_1))
-        #n_1_tmp = add(agg_pk, N_1_sum, n_1)
-        #N_1_sum = n_1_tmp
 
         n_2 = add_const(agg_pk, dFP_b, r2_i)
-        #n_2_tmp = add(agg_pk, N_2_sum, n_2)
-        #N_2_sum = n_2_tmp
         results["N2"].append(proxy_decrypt(agg_sk, n_2))
 
         N_i3_1 = mul_const(agg_pk, sTP_a, r2_i)
         N_i3_2 = mul_const(agg_pk, dFP_b, r1_i)
         N_i3_a = add(agg_pk, N_i3_1, add_const(agg_pk, N_i3_2, r1_i * r2_i))
         n_3 = add_const(agg_pk, N_i3_a, Z_values[i - 1])
-        #results["N3"].append(proxy_decrypt(agg_sk, n_3))
         n_3_tmp = add(agg_pk, N_3_sum, n_3)
         N_3_sum = n_3_tmp
 
-    #results["N1_t"].append(proxy_decrypt(agg_sk, N_1_sum))
-    #results["N2"].append(proxy_decrypt(agg_sk, N_2_sum))
-    results["N3_t"].append(proxy_decrypt(agg_sk, N_3_sum))
+    results["N3"].append(proxy_decrypt(agg_sk, N_3_sum))
 
     train.save_results(results)
 
@@ -488,46 +446,53 @@ def dppe_auc_station_final(station):
     D2 = station_decrypt(agg_sk_2, train_results['D2'][0])
     D3 = station_decrypt(agg_sk_2, train_results['D3'][0])
 
-    N = 0
-    # tmp_sum_n_1_mul_2 = encrypt(agg_pk, 0)
-    tmp_sum_n_1_mul_2 = encrypt(agg_pk, 0)
-    mul_n = []
+    sum_n_1_mul_2 = 0
     for j in range(len(train_results['N2'])):
         n_i1 = station_decrypt(agg_sk_2, train_results['N1'][j])
         n_1_mul_n_2 = mul_const(agg_pk,train_results['N2'][j], n_i1)
-        mul_n.append(station_decrypt(agg_sk_2, n_1_mul_n_2))
+        if j == 0:
+                sum_n_1_mul_2 = n_1_mul_n_2
+        else:
+                sum_n_1_mul_2 = add(agg_pk, sum_n_1_mul_2, n_1_mul_n_2)
 
-        #sum_n_1_mul_2 = add(agg_pk, tmp_sum_n_1_mul_2, n_1_mul_n_2)
-        #tmp_sum_n_1_mul_2 = sum_n_1_mul_2
-        #n_i2 = station_decrypt(agg_sk_2, train_results['N2'][j])
-        #n_i3 = station_decrypt(agg_sk_2, train_results['N3'][j])
-        #n_1t += n_i1
-        #if n_i3 != 0 and int(math.log10(n_i3)) + 1 >= 10:
-        #     n_i3 = -(agg_pk.n - n_i3)
-        #else:
-        #     pass
-        #N += (n_i1 * n_i2) - n_i3
-        #N_2 += n_i2
-    #N_2 = station_decrypt(agg_sk_2, train_results['N2'])
-    #N_1 = station_decrypt(agg_sk_2, train_results['N1_t'][0])
-    #print(n_1t)
-    #print(N_1)
-
-    N_3 = station_decrypt(agg_sk_2, train_results['N3_t'][0])
-
-    if N_3 != 0 and int(math.log10(N_3)) + 1 >= 10:
-        N_3 = -(agg_pk.n - N_3)
-    else:
-        pass
+    E_N = add(agg_pk, sum_n_1_mul_2 , mul_const(agg_pk, train_results['N3'][0], -1))
+    N = station_decrypt(agg_sk_2, E_N)
 
     D = (D1 * D2) - D3
-    N = sum(mul_n) - N_3
     if D == 0:
         auc = 0
     else:
         auc = (N / D) / 2
     print('PP-AUC: {}'.format(auc))
     return auc
+
+def experiment_1(res):
+    total_time = [sum(x) for x in zip(*[res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2']])]
+    df = pd.DataFrame(list(zip(res['time']['stations_1'], res['time']['proxy'],
+                               res['time']['stations_2'], total_time, res['samples'], res['stations'])),
+                      index=res['stations'],
+                      columns=['Station_1', 'Proxy', 'Station_2', 'Total', 'Samples', 'Stations'])
+    # Create a figure and an axis
+    s3_data = df.loc[df['Stations'] == 3]
+    s6_data = df.loc[df['Stations'] == 6]
+    s9_data = df.loc[df['Stations'] == 9]
+    fig, (ax1, ax2, ax3) = plt.subplots(1,3)
+    fig.suptitle(str(10) + ' runs with ' + str(res['samples'][0]) + ' subjects')
+    ax1.set_ylabel('Time (sec)')
+
+    ax2.set_ylabel('Time (sec)')
+    ax3.set_ylabel('Time (sec)')
+    ax1.set_xticklabels('3')
+    ax2.set_xticklabels('6')
+    ax3.set_xticklabels('9')
+    ax1.set_xlabel('Stations')
+    ax2.set_xlabel('Stations')
+    ax3.set_xlabel('Stations')
+    ax1.boxplot(s3_data['Total'])
+    ax2.boxplot(s6_data['Total'])
+    ax3.boxplot(s9_data['Total'])
+    fig.tight_layout()
+    plt.savefig('sub_boxplot.png')
 
 def experiment_2(res):
     perf = pd.DataFrame(list(zip(res['pp-auc'], res['gt-auc'])), index=res['stations'], columns=['pp', 'gt'])
@@ -556,33 +521,20 @@ def experiment_2(res):
     diff = gt - pp
     print(diff)
 
-def experiment_1(res):
-    perf = pd.DataFrame(list(zip(res['pp-auc'], res['gt-auc'])), index=res['stations'], columns=['pp', 'gt'])
-    total_time = [sum(x) for x in zip(*[res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2']])]
-    df = pd.DataFrame(list(zip(res['time']['stations_1'], res['time']['proxy'],
-                               res['time']['stations_2'], total_time, res['samples'], res['stations'])),
-                      index=res['stations'],
-                      columns=['Station_1', 'Proxy', 'Station_2', 'Total', 'Samples', 'Stations'])
-
-    b_plot = df.boxplot(column='Total', by='Stations', grid=False)
-    plt.title(str(10) + ' runs with ' + str(res['samples'][0]) + ' subjects')
-    plt.suptitle('')  #remove prev title
-    b_plot.set_ylabel('time (sec)')
-    b_plot.plot()
-    #plt.show()
-    plt.tight_layout()
-    plt.savefig('boxplot.png')
-    exit(0)
-
 
 if __name__ == "__main__":
+    """
+    Run with either complete experiment 1 or 2 uncommented
+    """
     # Experiment 1
-    #station_list = [3, 6, 9]
-    #subject_list = [100] # tmp value
+    station_list = [3, 6, 9]
+    subject_list = [1600]
+    loops = 10
 
-    # Experiment 2
-    station_list = [3]
-    subject_list = [25, 100, 200, 400, 800, 1600] # not final list, running until overflow
+    # Experiment 2 # uncomment to run runtime measurement
+    #station_list = [3]
+    #subject_list = [25, 100, 200, 400, 800, 1600, 3200, 6400, 12800] # not final list, running until overflow
+    #loops = 1
 
     performance = {'time':
                     {'stations_1': [],
@@ -600,76 +552,77 @@ if __name__ == "__main__":
         train = Train(results='results.pkl')
         differences = []
         for stations in station_list:
-            #for i in range(3): # repeat n times, to make boxplots
-            performance['stations'].append(stations)
-            try:
-                shutil.rmtree('./data/')
-            except Exception as e:
-                print(e)
-            directories = ['./data', './data/keys', './data/synthetic', './data/encrypted', './data/pht_results']
-            for dir in directories:
-                if not os.path.exists(dir):
-                    os.makedirs(dir)
+            for i in range(loops): # repeat n times, to make boxplot
+                performance['stations'].append(stations)
+                try:
+                    shutil.rmtree('./data/')
+                except Exception as e:
+                    print(e)
+                directories = ['./data', './data/keys', './data/synthetic', './data/encrypted', './data/pht_results']
+                for dir in directories:
+                    if not os.path.exists(dir):
+                        os.makedirs(dir)
 
-            #create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
-            # Experiment 1 - increase number of stations, but same sample size
-            create_synthetic_data_same_size(stations, subjects,[int(subjects*.20), int(subjects*.50)])
-            results = train.load_results()
-            results = generate_keys(stations, results)
-            # Mimic train building process
-            train.save_results(results)
+                # Experiment 1 - increase number of stations, but same sample size
+                create_synthetic_data_same_size(stations, subjects,[int(subjects*.20), int(subjects*.50)])
 
-            # compute AUC without encryption for proof of concept
-            auc_gt, performance = calculate_regular_auc(stations, performance)
-            performance['gt-auc'].append(auc_gt)
-            print('AUC value of GT {}'.format(auc_gt))
-            #exit(0)
-            times = []
-            for i in range(stations):
-                stat_df = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
+                # Experiment 2 - keep randomness in stations
+                #create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
+                results = train.load_results()
+                results = generate_keys(stations, results)
+                # Mimic train building process
+                train.save_results(results)
+
+                # compute AUC without encryption for proof of concept
+                auc_gt, performance = calculate_regular_auc(stations, performance)
+                performance['gt-auc'].append(auc_gt)
+                print('AUC value of GT {}'.format(auc_gt))
+                times = []
+                for i in range(stations):
+                    stat_df = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
+
+                    t1 = time.perf_counter()
+                    results = pp_auc_protocol(stat_df, station=i+1)
+                    t2 = time.perf_counter()
+                    times.append(t2 - t1)
+
+                    # remove at last station all encrypted noise values
+                    if i is stations - 1:
+                        results.pop('encrypted_r1')
+                        results.pop('encrypted_r2')
+
+                    train.save_results(results)  # saving results simulates push of image
+
+                print(f'Total execution time at stations {sum(times):0.4f} seconds')
+                print(f'Average execution time at stations {sum(times)/len(times):0.4f} seconds')
+                performance['time']['stations_1'].append(sum(times)/len(times))
+                performance['time']['total_step_1'].append(sum(times))
+
+                t3 = time.perf_counter()
+                dppe_auc_proxy()
+                t4 = time.perf_counter()
+                performance['time']['proxy'].append(t4 - t3)
+                print(f'Execution time by proxy station {t4 - t3:0.4f} seconds')
 
                 t1 = time.perf_counter()
-                results = pp_auc_protocol(stat_df, station=i+1)
+                auc_pp = dppe_auc_station_final(0)
                 t2 = time.perf_counter()
-                times.append(t2 - t1)
+                local_dppe = t2 - t1
+                performance['time']['stations_2'].append(local_dppe * stations)
+                print(f'Final AUC execution time at station {t2 - t1:0.4f} seconds')
 
-                # remove at last station all encrypted noise values
-                if i is stations - 1:
-                    results.pop('encrypted_r1')
-                    results.pop('encrypted_r2')
+                performance['pp-auc'].append(auc_pp)
 
-                train.save_results(results)  # saving results simulates push of image
+                diff = auc_gt - auc_pp
+                differences.append(diff)
+                print('Difference pp-AUC to GT: ', diff)
+                print('\n')
 
-            print(f'Total execution time at stations {sum(times):0.4f} seconds')
-            print(f'Average execution time at stations {sum(times)/len(times):0.4f} seconds')
-            performance['time']['stations_1'].append(sum(times)/len(times))
-            performance['time']['total_step_1'].append(sum(times))
-
-            t3 = time.perf_counter()
-            dppe_auc_proxy()
-            t4 = time.perf_counter()
-            performance['time']['proxy'].append(t4 - t3)
-            print(f'Execution time by proxy station {t4 - t3:0.4f} seconds')
-
-            t1 = time.perf_counter()
-            auc_pp = dppe_auc_station_final(0)
-            t2 = time.perf_counter()
-            local_dppe = t2 - t1
-            performance['time']['stations_2'].append(local_dppe * stations)
-            print(f'Final AUC execution time at station {t2 - t1:0.4f} seconds')
-
-            performance['pp-auc'].append(auc_pp)
-
-            diff = auc_gt - auc_pp
-            differences.append(diff)
-            print('Difference pp-AUC to GT: ', diff)
-            print('\n')
-
-        print("Avg difference {} over {} runs".format(sum(differences)/len(differences), len(differences)))
+            print("Avg difference {} over {} runs".format(sum(differences)/len(differences), len(differences)))
 
     print(performance)
 
     # Experiment 1
-    #boxplot_experiment_1(performance) # uncomment to plot exp 1
+    experiment_1(performance)
     # Experiment 2
-    experiment_2(performance)
+    #experiment_2(performance)
