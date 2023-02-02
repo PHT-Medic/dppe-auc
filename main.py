@@ -2,6 +2,7 @@ import copy
 import os
 import pickle
 import shutil
+import struct
 import time
 import matplotlib.pyplot as plt
 import numpy as np
@@ -109,13 +110,13 @@ def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients
                                              samples_each, replace=False)}
             valid = make_df(data, valid, station_i)
 
-def calculate_regular_auc(stations, performance):
+def calculate_regular_auc(stations, performance, regular_path):
     """
     Calculate AUC with sklearn as ground truth GT
     """
     lst_df = []
     for i in range(stations):
-        df_i = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
+        df_i = pickle.load(open(regular_path + '/data_s' + str(i+1) + '.pkl', 'rb'))
         lst_df.append(df_i)
 
     concat_df = pd.concat(lst_df)
@@ -127,7 +128,7 @@ def calculate_regular_auc(stations, performance):
 
     filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
     dfd = filtered_df.copy()
-    dfd["Pre"] = filtered_df["Pre"] / 100
+    dfd["Pre"] = filtered_df["Pre"]
     y = dfd["Label"]
     pred = dfd["Pre"]
 
@@ -221,7 +222,8 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key):
     #tic = time.perf_counter()
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
-    station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
+    # station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
+    station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(struct.pack("!f", x))) # floats support
 
     #print(len(station_df["Pre"][0]))
     station_df["Label"] = station_df["Label"].apply(lambda x: encrypt(agg_pk, x))
@@ -346,7 +348,8 @@ def dppe_auc_proxy(directory, results):
         # decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
         table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x))  # returns bytes
-        table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
+        #table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
+        table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: struct.unpack('f', x)) # floats support
         df_list.append(table_i)
 
     concat_df = pd.concat(df_list)
@@ -524,7 +527,7 @@ if __name__ == "__main__":
     DIRECTORY = './data'
     # Experiment 1
     station_list = [3, 6, 9]
-    subject_list = [160]
+    subject_list = [1000]
     loops = 10
 
     # Experiment 2 # uncomment to run runtime measurement
@@ -571,7 +574,8 @@ if __name__ == "__main__":
                 train.save_results(results)
 
                 # compute AUC without encryption for proof of concept
-                auc_gt, performance = calculate_regular_auc(stations, performance)
+                REGULAR_PATH = DIRECTORY + '/synthetic'
+                auc_gt, performance = calculate_regular_auc(stations, performance, REGULAR_PATH)
                 performance['gt-auc'].append(auc_gt)
                 print('AUC value of GT {}'.format(auc_gt))
                 times = []

@@ -90,41 +90,47 @@ class Train:
         except:
             return None
 
-def data_generation(pre, label):
-    subjects = len(pre)
-    fake_patients = [int(subjects*.20), int(subjects*.50)]
+def data_generation(pre, label, data_path, station):
+    fake_patients = [int(len(pre)*.20), int(len(pre)*.50)]
     fake_data_val = randint(fake_patients[0], fake_patients[1])
-    print(fake_data_val)
+    print('Fake subjects for dppe-auc {}'.format(fake_data_val))
     fake_data = {"Pre": np.random.randint(low=5, high=100, size=fake_data_val),
                     "Label": np.random.choice([0], size=fake_data_val),
                     "Flag": np.random.choice([0], size=fake_data_val)
                  }
-    data = {'Pre': pre,
+    real_data = {'Pre': pre,
             'Label': label,
-            'Flag': np.random.choice([1], size=len(label))}
+            'Flag': np.random.choice([1], size=len(label))
+            }
 
-    df_real = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
+    df_real = pd.DataFrame(real_data, columns=['Pre', 'Label', 'Flag'])
     df_fake = pd.DataFrame(fake_data, columns=['Pre', 'Label', 'Flag'])
+
     dfs = [df_real, df_fake]
     merged = pd.concat(dfs, axis=0)
-    stat_df = merged.sample(frac=1).reset_index(drop=True)
-    return stat_df
+    df = merged.sample(frac=1).reset_index(drop=True)
+
+    df.to_pickle(data_path + '/data_s' + str(station + 1) + '.pkl')
+
+    return df
 
 
 if __name__ == '__main__':
     DIRECTORY = './showcase'
+    DATA_STORAGE_PATH = DIRECTORY + '/decrypted'
     MODEL_PATH = DIRECTORY + '/pht_results/model.pkl'
     RESULT_PATH = DIRECTORY + '/pht_results/results.pkl'
+
     train = Train(model=MODEL_PATH, results=RESULT_PATH)
 
     stations = 3
-    directories = [DIRECTORY + '/keys', DIRECTORY + '/encrypted', DIRECTORY + '/pht_results']
+    directories = [DIRECTORY + '/keys', DIRECTORY + '/encrypted', DIRECTORY + '/decrypted', DIRECTORY + '/pht_results']
     for dir in directories:
         try:
             shutil.rmtree(dir)
         except Exception as e:
             print(e)
-    directories = [DIRECTORY + '/keys',
+    directories = [DIRECTORY + '/keys', DIRECTORY + '/decrypted',
                    DIRECTORY + '/encrypted', DIRECTORY + '/pht_results']
     for dir in directories:
         if not os.path.exists(dir):
@@ -135,6 +141,10 @@ if __name__ == '__main__':
     results = train.load_results()
     results = generate_keys(stations, DIRECTORY, results)
     train.save_results(results)
+
+    # For comparision of gt-auc and dppe-auc
+    global_test_x = []
+    global_test_y = []
 
     for i in range(stations):
         print('Station {}'.format(i+1))
@@ -184,6 +194,8 @@ if __name__ == '__main__':
 
         x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, shuffle=True)
         print('Hold out test size: {}'.format(Counter(y_test)))
+        global_test_y.extend(y_test)
+        global_test_x.extend(x_test)
         if model is None:
             model = MultinomialNB(alpha=0.01)
             acc = 0
@@ -196,29 +208,40 @@ if __name__ == '__main__':
         auc_gt = metrics.roc_auc_score(y_test, y_pred)
         print('GT AUC with test data after training model: {}'.format(auc_gt))
 
-        ## TODO DPPE-AUC difference to gt protocol fix
+        ## TODO DPPE-AUC difference to gt protocol fix (assumption: int conversion)
         y_pred_prob = model.predict_proba(x_test)[:, -1]
-        pre = np.array(y_pred_prob*100).astype(int)
+        pre = np.array(y_pred_prob)
+        #print(pre)
         label = y_test
-        print(metrics.roc_auc_score(label, pre))
-        # Generate flag data within df
-        stat_df = data_generation(pre, label)
+        #print(metrics.roc_auc_score(label, pre))
+
+        stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i)
 
         prev_results = train.load_results()
+        print('Station - DPPE-AUC protocol - Step I')
         new_results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i+1)
 
         train.save_model(model)
         train.save_results(new_results)
         print('\n')
 
-    # proxy
+    print('Starting proxy protocol')
     results = train.load_results()
     new_results = dppe_auc_proxy(DIRECTORY, results)
     train.save_results(new_results)
 
     results = train.load_results()
+    print('Station - DPPE-AUC protocol - Step II')
     dppe_auc = dppe_auc_station_final(DIRECTORY, results)
 
+    # global testing of auc
+    y_pred_prob = model.predict_proba(global_test_x)[:, -1]
+    pre = np.array(y_pred_prob)
+    label = global_test_y
+    auc_gt2 = metrics.roc_auc_score(label, pre)
+    print(auc_gt2)
+    per = {'samples': []}
+    auc_gt, _ = calculate_regular_auc(stations, per, DATA_STORAGE_PATH)
     diff = auc_gt - dppe_auc
     print('GT-AUC: ', auc_gt)
     print('Difference DPPE-AUC to GT: ', diff)
