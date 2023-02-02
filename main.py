@@ -66,6 +66,14 @@ class Train:
             print(err)
             raise FileNotFoundError("Result file cannot be saved")
 
+def make_df(data: object, valid, station) -> object:
+    df = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
+    df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
+    if not np.all(df["Label"] == 1):
+        valid = True
+        df.to_pickle('./data/synthetic/data_s' + str(station + 1) + '.pkl')
+    return valid
+
 def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
     """
     Create and save synthetic data of given number of samples and number of stations. Including flag patients
@@ -78,14 +86,10 @@ def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
                     "Label": np.random.choice([0, 1], size=samples+fake_data_val, p=[0.1, 0.9]),
                     "Flag": np.random.choice(np.concatenate([[1] * samples, [0] * fake_data_val]),
                                              samples+fake_data_val, replace=False)}
+            valid = make_df(data, valid, station_i)
 
-            df_2 = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
-            df_2.loc[df_2["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
 
-            if not np.all(df_2["Label"] == 1):
-                valid = True
 
-            df_2.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
 
 def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients=None):
     """
@@ -103,13 +107,7 @@ def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients
                     "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
                     "Flag": np.random.choice(np.concatenate([[1] * samples_each, [0] * fake_data_val]),
                                              samples_each, replace=False)}
-            df_1 = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
-            df_1.loc[df_1["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
-
-            if not np.all(df_1["Label"] == 1):
-                valid = True
-
-            df_1.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
+            valid = make_df(data, valid, station_i)
 
 def calculate_regular_auc(stations, performance):
     """
@@ -137,15 +135,15 @@ def calculate_regular_auc(stations, performance):
 
     return gt, performance
 
-def generate_keys(stations, results):
+def generate_keys(stations, directory, results):
     """
     Generate and save keys of given numbers of stations and train results
     """
     for i in range(stations):
         # paillier keys
         sk, pk = generate_keypair(3072)
-        pickle.dump(sk, open('./data/keys/s' + str(i+1) + '_paillier_sk.p', 'wb'))
-        pickle.dump(pk, open('./data/keys/s' + str(i+1) + '_paillier_pk.p', 'wb'))
+        pickle.dump(sk, open(directory + '/keys/s' + str(i+1) + '_paillier_sk.p', 'wb'))
+        pickle.dump(pk, open(directory + '/keys/s' + str(i+1) + '_paillier_pk.p', 'wb'))
         results['stations_paillier_pk'][i] = pk
 
         # rsa keys
@@ -163,14 +161,14 @@ def generate_keys(stations, results):
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        with open('./data/keys/s' + str(i+1) + '_rsa_sk.pem', 'wb') as f:
+        with open(directory + '/keys/s' + str(i+1) + '_rsa_sk.pem', 'wb') as f:
             f.write(private_pem)
 
         public_pem = rsa_public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
-        with open('./data/keys/s' + str(i+1) + '_rsa_pk.pem', 'wb') as f:
+        with open(directory + '/keys/s' + str(i+1) + '_rsa_pk.pem', 'wb') as f:
             f.write(public_pem)
 
         results['stations_rsa_pk'][i] = public_pem
@@ -182,9 +180,9 @@ def generate_keys(stations, results):
     # simulate private key separation
     del sk_1.x2
     del sk_2.x1
-    pickle.dump(sk_1, open('./data/keys/agg_sk_1.p', 'wb'))
-    pickle.dump(sk_2, open('./data/keys/agg_sk_2.p', 'wb'))
-    pickle.dump(pk, open('./data/keys/agg_pk.p', 'wb'))
+    pickle.dump(sk_1, open(directory + '/keys/agg_sk_1.p', 'wb'))
+    pickle.dump(sk_2, open(directory + '/keys/agg_sk_2.p', 'wb'))
+    pickle.dump(pk, open(directory + '/keys/agg_pk.p', 'wb'))
     results['aggregator_paillier_pk'] = pk
 
     rsa_private_key = rsa.generate_private_key(
@@ -201,14 +199,14 @@ def generate_keys(stations, results):
         encryption_algorithm=serialization.NoEncryption()
     )
 
-    with open('./data/keys/agg_rsa_private_key.pem', 'wb') as f:
+    with open(directory + '/keys/agg_rsa_private_key.pem', 'wb') as f:
         f.write(private_pem)
 
     public_pem = rsa_public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
-    with open('./data/keys/agg_rsa_public_key.pem', 'wb') as f:
+    with open(directory + '/keys/agg_rsa_public_key.pem', 'wb') as f:
         f.write(public_pem)
 
     results['aggregator_rsa_pk'] = public_pem
@@ -223,7 +221,6 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key):
     #tic = time.perf_counter()
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
-    #print(station_df["Pre"])
     station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
 
     #print(len(station_df["Pre"][0]))
@@ -256,12 +253,12 @@ def load_rsa_pk(path):
         )
     return public_key
 
-def encrypt_symmetric_key(station, symmetric_key):
+def encrypt_symmetric_key(symmetric_key, directory):
     """
     Encrypt symmetric key_station with public rsa key of aggregator
     return: encrypted_symmetric_key
     """
-    rsa_agg_pk = load_rsa_pk('./data/keys/agg_rsa_public_key.pem')
+    rsa_agg_pk = load_rsa_pk(directory + '/keys/agg_rsa_public_key.pem')
     encrypted_symmetric_key = rsa_agg_pk.encrypt(symmetric_key, padding.OAEP(
                                                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                                                 algorithm=hashes.SHA256(),
@@ -270,11 +267,11 @@ def encrypt_symmetric_key(station, symmetric_key):
 
     return encrypted_symmetric_key
 
-def decrypt_symmetric_key(station, ciphertext):
+def decrypt_symmetric_key(ciphertext, directory):
     """
     Decrypt of given station rsa encrypted k_station
     """
-    rsa_agg_sk = load_rsa_sk('./data/keys/agg_rsa_private_key.pem')
+    rsa_agg_sk = load_rsa_sk(directory + '/keys/agg_rsa_private_key.pem')
     decrypted_symmetric_key = rsa_agg_sk.decrypt(
         ciphertext,
         padding.OAEP(
@@ -284,22 +281,22 @@ def decrypt_symmetric_key(station, ciphertext):
         ))
     return decrypted_symmetric_key
 
-def pp_auc_protocol(station_df, station=int):
+def pp_auc_protocol(station_df, prev_results, directory=str, station=int):
     """
     Perform PP-AUC protocol at specific station given dataframe
     """
-    prev_results = train.load_results()  # loading results simulates pull of image
+
     agg_pk = prev_results['aggregator_paillier_pk']
+    symmetric_key = Fernet.generate_key() # represents k1 k_n
     if station == 1:
         r1 = randint(1, 100)  # random value between 1 to 100
         r2 = randint(1, 100)
 
-        symmetric_key = Fernet.generate_key()  # represents k1
         enc_table = encrypt_table(station_df, agg_pk, r1, r2, symmetric_key)
         # Save for transparency the table - not required
-        enc_table.to_pickle('./data/encrypted/data_s' + str(station) + '.pkl')
+        enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
 
-        enc_symmetric_key = encrypt_symmetric_key(station, symmetric_key)
+        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory)
         prev_results['encrypted_ks'].append(enc_symmetric_key)
 
         for i in range(len(prev_results['stations_rsa_pk'])):
@@ -310,17 +307,16 @@ def pp_auc_protocol(station_df, station=int):
 
     else:
         enc_r1 = prev_results['encrypted_r1'][station-1]
-        sk_s_i = pickle.load(open('./data/keys/s' + str(station) + '_paillier_sk.p', 'rb'))
+        sk_s_i = pickle.load(open(directory + '/keys/s' + str(station) + '_paillier_sk.p', 'rb'))
         dec_r1 = decrypt(sk_s_i, enc_r1)
 
         enc_r2 = prev_results['encrypted_r2'][station-1]
         dec_r2 = decrypt(sk_s_i, enc_r2)
 
-        symmetric_key = Fernet.generate_key()  # represents k_2 to k_n
         enc_table = encrypt_table(station_df, agg_pk, dec_r1, dec_r2, symmetric_key)
-        enc_table.to_pickle('./data/encrypted/data_s' + str(station) + '.pkl')
+        enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
 
-        enc_symmetric_key = encrypt_symmetric_key(station, symmetric_key)
+        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory)
         prev_results['encrypted_ks'].append(enc_symmetric_key)
 
     prev_results['pp_auc_tables'][station-1] = enc_table
@@ -334,19 +330,18 @@ def z_values(n):
     l = random.sample(range(-int(n/2), int(n/2)), k=n-1)
     return l + [-sum(l)]
 
-def dppe_auc_proxy():
+def dppe_auc_proxy(directory, results):
     """
     Simulation of aggregator service - globally computes privacy preserving AUC table as proxy station
     """
-    results = train.load_results()
     agg_pk = results['aggregator_paillier_pk']
-    agg_sk = pickle.load(open('./data/keys/agg_sk_1.p', 'rb'))
+    agg_sk = pickle.load(open(directory + '/keys/agg_sk_1.p', 'rb'))
 
     # decrypt symmetric keys (k_stations)
     df_list = []
     for i in range(len(results['encrypted_ks'])):
         enc_k_i = results['encrypted_ks'][i]
-        dec_k_i = decrypt_symmetric_key(i, enc_k_i)
+        dec_k_i = decrypt_symmetric_key(enc_k_i, directory)
 
         # decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
@@ -431,14 +426,13 @@ def dppe_auc_proxy():
 
     results["N3"].append(proxy_decrypt(agg_sk, N_3_sum))
 
-    train.save_results(results)
+    return results
 
-def dppe_auc_station_final(station):
+def dppe_auc_station_final(directory, train_results):
     """
     Simulation of station delegated AUC parts to compute global DPPE-AUC locally
     """
-    train_results = train.load_results()
-    agg_sk_2 = pickle.load(open('./data/keys/agg_sk_2.p', 'rb'))
+    agg_sk_2 = pickle.load(open(directory + '/keys/agg_sk_2.p', 'rb'))
     agg_pk = train_results['aggregator_paillier_pk']
 
     # decrypt random components D1, D2, D3, Ni1, Ni2, Ni3
@@ -463,7 +457,7 @@ def dppe_auc_station_final(station):
         auc = 0
     else:
         auc = (N / D) / 2
-    print('PP-AUC: {}'.format(auc))
+    print('DPPE-AUC: {}'.format(auc))
     return auc
 
 def experiment_1(res):
@@ -492,7 +486,7 @@ def experiment_1(res):
     ax2.boxplot(s6_data['Total'])
     ax3.boxplot(s9_data['Total'])
     fig.tight_layout()
-    plt.savefig('sub_boxplot.png')
+    plt.savefig('germany_sub_boxplot.png')
 
 def experiment_2(res):
     perf = pd.DataFrame(list(zip(res['pp-auc'], res['gt-auc'])), index=res['stations'], columns=['pp', 'gt'])
@@ -526,9 +520,11 @@ if __name__ == "__main__":
     """
     Run with either complete experiment 1 or 2 uncommented
     """
+
+    DIRECTORY = './data'
     # Experiment 1
     station_list = [3, 6, 9]
-    subject_list = [1600]
+    subject_list = [160]
     loops = 10
 
     # Experiment 2 # uncomment to run runtime measurement
@@ -555,10 +551,11 @@ if __name__ == "__main__":
             for i in range(loops): # repeat n times, to make boxplot
                 performance['stations'].append(stations)
                 try:
-                    shutil.rmtree('./data/')
+                    shutil.rmtree(DIRECTORY + '/')
                 except Exception as e:
                     print(e)
-                directories = ['./data', './data/keys', './data/synthetic', './data/encrypted', './data/pht_results']
+                directories = [DIRECTORY, DIRECTORY + '/keys', DIRECTORY + '/synthetic',
+                               DIRECTORY + '/encrypted', DIRECTORY + '/pht_results']
                 for dir in directories:
                     if not os.path.exists(dir):
                         os.makedirs(dir)
@@ -569,7 +566,7 @@ if __name__ == "__main__":
                 # Experiment 2 - keep randomness in stations
                 #create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
                 results = train.load_results()
-                results = generate_keys(stations, results)
+                results = generate_keys(stations, DIRECTORY, results)
                 # Mimic train building process
                 train.save_results(results)
 
@@ -579,10 +576,11 @@ if __name__ == "__main__":
                 print('AUC value of GT {}'.format(auc_gt))
                 times = []
                 for i in range(stations):
-                    stat_df = pickle.load(open('./data/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
+                    stat_df = pickle.load(open(DIRECTORY + '/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
 
                     t1 = time.perf_counter()
-                    results = pp_auc_protocol(stat_df, station=i+1)
+                    prev_results = train.load_results()  # loading results simulates pull of image
+                    results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i+1)
                     t2 = time.perf_counter()
                     times.append(t2 - t1)
 
@@ -597,15 +595,20 @@ if __name__ == "__main__":
                 print(f'Average execution time at stations {sum(times)/len(times):0.4f} seconds')
                 performance['time']['stations_1'].append(sum(times)/len(times))
                 performance['time']['total_step_1'].append(sum(times))
+                results = train.load_results()
 
                 t3 = time.perf_counter()
-                dppe_auc_proxy()
+                results = dppe_auc_proxy(DIRECTORY, results)
                 t4 = time.perf_counter()
+
                 performance['time']['proxy'].append(t4 - t3)
                 print(f'Execution time by proxy station {t4 - t3:0.4f} seconds')
 
+                train.save_results(results) # simulate push and pull
+                results = train.load_results()
+
                 t1 = time.perf_counter()
-                auc_pp = dppe_auc_station_final(0)
+                auc_pp = dppe_auc_station_final(DIRECTORY, results)
                 t2 = time.perf_counter()
                 local_dppe = t2 - t1
                 performance['time']['stations_2'].append(local_dppe * stations)
