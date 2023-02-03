@@ -222,8 +222,9 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key):
     #tic = time.perf_counter()
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
-    # station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
-    station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(struct.pack("!f", x))) # floats support
+    #print(station_df["Pre"]) TODO uncomment to see obscured pre
+    station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
+    #station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(struct.pack("!f", x))) # floats support
 
     #print(len(station_df["Pre"][0]))
     station_df["Label"] = station_df["Label"].apply(lambda x: encrypt(agg_pk, x))
@@ -348,8 +349,8 @@ def dppe_auc_proxy(directory, results):
         # decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
         table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x))  # returns bytes
-        #table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
-        table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: struct.unpack('f', x)) # floats support
+        table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
+        #table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: struct.unpack('f', x)) # floats support
         df_list.append(table_i)
 
     concat_df = pd.concat(df_list)
@@ -527,7 +528,7 @@ if __name__ == "__main__":
     DIRECTORY = './data'
     # Experiment 1
     station_list = [3, 6, 9]
-    subject_list = [1000]
+    subject_list = [150]
     loops = 10
 
     # Experiment 2 # uncomment to run runtime measurement

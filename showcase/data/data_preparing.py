@@ -8,6 +8,7 @@ accessions = df.Accession
 tmp = accessions.str.rpartition('.')[2]
 sequences = df.assign(Accession=tmp)
 merged_df = sequences.merge(labels, how='inner', on=['Accession'])
+print(merged_df)
 df_split = np.array_split(merged_df, 3)
 
 for i in range(3):

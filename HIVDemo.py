@@ -94,7 +94,7 @@ def data_generation(pre, label, data_path, station):
     fake_patients = [int(len(pre)*.20), int(len(pre)*.50)]
     fake_data_val = randint(fake_patients[0], fake_patients[1])
     print('Fake subjects for dppe-auc {}'.format(fake_data_val))
-    fake_data = {"Pre": np.random.randint(low=5, high=100, size=fake_data_val),
+    fake_data = {"Pre": np.random.randint(low=min(pre), high=max(pre), size=fake_data_val), #TODO keep in range from pre
                     "Label": np.random.choice([0], size=fake_data_val),
                     "Flag": np.random.choice([0], size=fake_data_val)
                  }
@@ -109,6 +109,7 @@ def data_generation(pre, label, data_path, station):
     dfs = [df_real, df_fake]
     merged = pd.concat(dfs, axis=0)
     df = merged.sample(frac=1).reset_index(drop=True)
+    tmp = df.sort_values(by='Pre', ascending=False)
 
     df.to_pickle(data_path + '/data_s' + str(station + 1) + '.pkl')
 
@@ -201,7 +202,7 @@ if __name__ == '__main__':
             acc = 0
         else:
             acc = model.score(x_test, y_test)
-            print('GT AUC with new test data on previous model: {}'.format(acc))
+            #print('GT AUC with new test data on previous model: {}'.format(acc))
         classes = np.array([0, 1])
         model.partial_fit(x_train, y_train, classes=classes)
         y_pred = model.predict(x_test)
@@ -209,10 +210,12 @@ if __name__ == '__main__':
         print('GT AUC with test data after training model: {}'.format(auc_gt))
 
         ## TODO DPPE-AUC difference to gt protocol fix (assumption: int conversion)
+        #y_pred_prob = model.predict_proba(x_test)[:, -1].astype(int)
         y_pred_prob = model.predict_proba(x_test)[:, -1]
-        pre = np.array(y_pred_prob)
-        #print(pre)
+        pre = np.array(y_pred_prob*1000000).astype(int)
+        print(pre)
         label = y_test
+        print(label)
         #print(metrics.roc_auc_score(label, pre))
 
         stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i)
@@ -239,7 +242,7 @@ if __name__ == '__main__':
     pre = np.array(y_pred_prob)
     label = global_test_y
     auc_gt2 = metrics.roc_auc_score(label, pre)
-    print(auc_gt2)
+    #print(auc_gt2)
     per = {'samples': []}
     auc_gt, _ = calculate_regular_auc(stations, per, DATA_STORAGE_PATH)
     diff = auc_gt - dppe_auc
