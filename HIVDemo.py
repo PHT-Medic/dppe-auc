@@ -91,25 +91,28 @@ class Train:
             return None
 
 def data_generation(pre, label, data_path, station):
-    fake_patients = [int(len(pre)*.20), int(len(pre)*.50)]
-    fake_data_val = randint(fake_patients[0], fake_patients[1])
-    print('Fake subjects for dppe-auc {}'.format(fake_data_val))
-    fake_data = {"Pre": np.random.randint(low=min(pre), high=max(pre), size=fake_data_val), #TODO keep in range from pre
-                    "Label": np.random.choice([0], size=fake_data_val),
-                    "Flag": np.random.choice([0], size=fake_data_val)
-                 }
     real_data = {'Pre': pre,
             'Label': label,
             'Flag': np.random.choice([1], size=len(label))
             }
-
     df_real = pd.DataFrame(real_data, columns=['Pre', 'Label', 'Flag'])
+
+    fake_patients = [int(len(pre) * .20), int(len(pre) * .50)]
+    fake_data_val = randint(fake_patients[0], fake_patients[1])
+    print('Fake subjects for dppe-auc {}'.format(fake_data_val))
+
+    tmp_val = list(df_real['Pre'].sort_values(ascending=False))
+    values = [tmp_val[i] for i in sorted(np.unique(tmp_val, return_index=True)[1])]
+    prob = list(df_real['Pre'].value_counts(normalize=True, ascending=False))
+    fake_data = {"Pre": random.choices(values, weights=prob, k=fake_data_val),
+                 "Label": np.random.choice([0], size=fake_data_val),
+                 "Flag": np.random.choice([0], size=fake_data_val)
+                 }
     df_fake = pd.DataFrame(fake_data, columns=['Pre', 'Label', 'Flag'])
 
     dfs = [df_real, df_fake]
     merged = pd.concat(dfs, axis=0)
     df = merged.sample(frac=1).reset_index(drop=True)
-    tmp = df.sort_values(by='Pre', ascending=False)
 
     df.to_pickle(data_path + '/data_s' + str(station + 1) + '.pkl')
 
