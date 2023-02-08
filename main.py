@@ -52,6 +52,7 @@ class Train:
                     'N1': [],
                     'N2': [],
                     'N3': [],
+                    'floats': []
                     }
 
     def save_results(self, results):
@@ -67,6 +68,7 @@ class Train:
             print(err)
             raise FileNotFoundError("Result file cannot be saved")
 
+
 def make_df(data: object, valid, station) -> object:
     df = pd.DataFrame(data, columns=['Pre', 'Label', 'Flag'])
     df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
@@ -74,6 +76,7 @@ def make_df(data: object, valid, station) -> object:
         valid = True
         df.to_pickle('./data/synthetic/data_s' + str(station + 1) + '.pkl')
     return valid
+
 
 def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
     """
@@ -83,13 +86,12 @@ def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
         valid = False
         while not valid:
             fake_data_val = randint(fake_patients[0], fake_patients[1]) # random number flag value in given percentage range
-            data = {"Pre": np.random.randint(low=5, high=10000, size=samples+fake_data_val),
+            data = {"Pre": np.random.random(size=samples+fake_data_val),
+                    #"Pre": np.random.randint(low=5, high=10000, size=samples+fake_data_val),
                     "Label": np.random.choice([0, 1], size=samples+fake_data_val, p=[0.1, 0.9]),
                     "Flag": np.random.choice(np.concatenate([[1] * samples, [0] * fake_data_val]),
                                              samples+fake_data_val, replace=False)}
             valid = make_df(data, valid, station_i)
-
-
 
 
 def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients=None):
@@ -103,12 +105,14 @@ def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients
             samples_each = samples_each + left_over
         valid = False
         while not valid:
-            fake_data_val = randint(fake_patients[0], fake_patients[1]) # random number flag value in given percentage range
-            data = {"Pre": np.random.randint(low=5, high=10000, size=samples_each),
+            fake_data_val = randint(fake_patients[0], fake_patients[1])  # random number flag value in given percentage range
+            data = {"Pre": np.random.random(size=samples_each),
+                    #"Pre": np.random.randint(low=5, high=10000, size=samples_each),
                     "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
                     "Flag": np.random.choice(np.concatenate([[1] * samples_each, [0] * fake_data_val]),
                                              samples_each, replace=False)}
             valid = make_df(data, valid, station_i)
+
 
 def calculate_regular_auc(stations, performance, regular_path):
     """
@@ -132,9 +136,11 @@ def calculate_regular_auc(stations, performance, regular_path):
     y = dfd["Label"]
     pred = dfd["Pre"]
 
+
     gt = metrics.roc_auc_score(y, pred)
 
     return gt, performance
+
 
 def generate_keys(stations, directory, results):
     """
@@ -214,7 +220,8 @@ def generate_keys(stations, directory, results):
 
     return results
 
-def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key):
+
+def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, prev_results):
     """
     Encrypt dataframe of given station dataframe with paillier public key of aggregator and random values
     """
@@ -222,9 +229,13 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key):
     #tic = time.perf_counter()
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
-    #print(station_df["Pre"]) TODO uncomment to see obscured pre
-    station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
-    #station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(struct.pack("!f", x))) # floats support
+
+    print(station_df["Pre"].to_list())
+    #print(station_df["Pre"]) # TODO uncomment to see obscured pre
+    if prev_results['floats'][0] is True:
+        station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(struct.pack("f", x)))
+    else:
+        station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
 
     #print(len(station_df["Pre"][0]))
     station_df["Label"] = station_df["Label"].apply(lambda x: encrypt(agg_pk, x))
@@ -232,6 +243,7 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key):
     #toc = time.perf_counter()
     #print(f'Encryption time of table {toc - tic:0.4f} seconds')
     return station_df
+
 
 def load_rsa_sk(path):
     """
@@ -245,6 +257,7 @@ def load_rsa_sk(path):
         )
     return private_key
 
+
 def load_rsa_pk(path):
     """
     Return public rsa key of given file path
@@ -255,6 +268,7 @@ def load_rsa_pk(path):
             backend=default_backend()
         )
     return public_key
+
 
 def encrypt_symmetric_key(symmetric_key, directory):
     """
@@ -270,6 +284,7 @@ def encrypt_symmetric_key(symmetric_key, directory):
 
     return encrypted_symmetric_key
 
+
 def decrypt_symmetric_key(ciphertext, directory):
     """
     Decrypt of given station rsa encrypted k_station
@@ -284,6 +299,7 @@ def decrypt_symmetric_key(ciphertext, directory):
         ))
     return decrypted_symmetric_key
 
+
 def pp_auc_protocol(station_df, prev_results, directory=str, station=int):
     """
     Perform PP-AUC protocol at specific station given dataframe
@@ -295,7 +311,7 @@ def pp_auc_protocol(station_df, prev_results, directory=str, station=int):
         r1 = randint(1, 100)  # random value between 1 to 100
         r2 = randint(1, 100)
 
-        enc_table = encrypt_table(station_df, agg_pk, r1, r2, symmetric_key)
+        enc_table = encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, prev_results)
         # Save for transparency the table - not required
         enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
 
@@ -316,7 +332,7 @@ def pp_auc_protocol(station_df, prev_results, directory=str, station=int):
         enc_r2 = prev_results['encrypted_r2'][station-1]
         dec_r2 = decrypt(sk_s_i, enc_r2)
 
-        enc_table = encrypt_table(station_df, agg_pk, dec_r1, dec_r2, symmetric_key)
+        enc_table = encrypt_table(station_df, agg_pk, dec_r1, dec_r2, symmetric_key, prev_results)
         enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
 
         enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory)
@@ -326,12 +342,14 @@ def pp_auc_protocol(station_df, prev_results, directory=str, station=int):
 
     return prev_results
 
+
 def z_values(n):
     """
     Generate random values of list length n which sum is zero
     """
     l = random.sample(range(-int(n/2), int(n/2)), k=n-1)
     return l + [-sum(l)]
+
 
 def dppe_auc_proxy(directory, results):
     """
@@ -349,15 +367,19 @@ def dppe_auc_proxy(directory, results):
         # decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
         table_i["Dec_pre"] = table_i["Pre"].apply(lambda x: Fernet(dec_k_i).decrypt(x))  # returns bytes
-        table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
-        #table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: struct.unpack('f', x)) # floats support
+        if results['floats'][0] is True:
+            d = table_i["Dec_pre"].apply(lambda x: struct.unpack('f', x)).to_list()
+            lst = [x[0] for x in d]
+            table_i["Dec_pre"] = lst
+        else:
+            table_i["Dec_pre"] = table_i["Dec_pre"].apply(lambda x: int.from_bytes(x, "big"))
         df_list.append(table_i)
 
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
     df_new_index = sort_df.reset_index()
-
+    print(df_new_index["Dec_pre"].to_list())
     M = len(df_new_index)
     tp_values = []
     fp_values = []
@@ -371,6 +393,8 @@ def dppe_auc_proxy(directory, results):
         tmp_sum = sum_flags
         fp_values.append(add(agg_pk, sum_flags, mul_const(agg_pk, tp_values[-1], -1)))
 
+    print(decrypt(agg_sk, tp_values[-1]))
+    print(decrypt(agg_sk, fp_values[-1]))
     a = randint(1, 100)
     b = randint(1, 100)
 
@@ -378,7 +402,7 @@ def dppe_auc_proxy(directory, results):
     # TP_A is summation of labels (TP)
     tp_a_mul = mul_const(agg_pk, tp_values[-1], a)
     fp_a_mul = mul_const(agg_pk, fp_values[-1], b)
-    #
+
     r_1A = randint(1, 100)
     r_2A = randint(1, 100)
     D1 = add_const(agg_pk, tp_a_mul, r_1A)
@@ -395,12 +419,14 @@ def dppe_auc_proxy(directory, results):
     # Tie condition differences between TP and FP
     # determine indexes of threshold values
     thre_ind = []
-    pred = sort_df["Dec_pre"].to_list()
+    pred = df_new_index["Dec_pre"].to_list()
+    #print(pred)
     for i in range(M - 1):
         if pred[i] != pred[i + 1]:
             thre_ind.append(i)
 
-    thre_ind = list(map(lambda x: x + 1, thre_ind)) # add one
+    thre_ind = list(map(lambda x: x + 1, thre_ind))  # add one
+    print(thre_ind)
     # Multiply with a and b respectively
     Z_values = z_values(len(thre_ind) - 1)
 
@@ -464,6 +490,7 @@ def dppe_auc_station_final(directory, train_results):
     print('DPPE-AUC: {}'.format(auc))
     return auc
 
+
 def experiment_1(res):
     total_time = [sum(x) for x in zip(*[res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2']])]
     df = pd.DataFrame(list(zip(res['time']['stations_1'], res['time']['proxy'],
@@ -491,6 +518,7 @@ def experiment_1(res):
     ax3.boxplot(s9_data['Total'])
     fig.tight_layout()
     plt.savefig('germany_sub_boxplot.png')
+
 
 def experiment_2(res):
     perf = pd.DataFrame(list(zip(res['pp-auc'], res['gt-auc'])), index=res['stations'], columns=['pp', 'gt'])
@@ -583,8 +611,13 @@ if __name__ == "__main__":
                 for i in range(stations):
                     stat_df = pickle.load(open(DIRECTORY + '/synthetic/data_s' + str(i+1) + '.pkl', 'rb'))
 
-                    t1 = time.perf_counter()
                     prev_results = train.load_results()  # loading results simulates pull of image
+                    if stat_df['Pre'].dtype == 'float64':
+                        prev_results['floats'].insert(0, True)
+                    else:
+                        prev_results['floats'].insert(0, False)
+
+                    t1 = time.perf_counter()
                     results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i+1)
                     t2 = time.perf_counter()
                     times.append(t2 - t1)

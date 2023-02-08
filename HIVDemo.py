@@ -63,6 +63,7 @@ class Train:
                     'N1': [],
                     'N2': [],
                     'N3': [],
+                    'floats': []
                     }
 
     def save_results(self, results):
@@ -140,8 +141,6 @@ if __name__ == '__main__':
         if not os.path.exists(dir):
             os.makedirs(dir)
 
-
-
     results = train.load_results()
     results = generate_keys(stations, DIRECTORY, results)
     train.save_results(results)
@@ -215,15 +214,24 @@ if __name__ == '__main__':
         ## TODO DPPE-AUC difference to gt protocol fix (assumption: int conversion)
         #y_pred_prob = model.predict_proba(x_test)[:, -1].astype(int)
         y_pred_prob = model.predict_proba(x_test)[:, -1]
-        pre = np.array(y_pred_prob*1000000).astype(int)
-        print(pre)
+        prev_results = train.load_results()
+
+        # pre = np.array((y_pred_prob) * 10000).astype(int) # int
+        pre = np.array(y_pred_prob) # floats
+        #pre = np.array((y_pred_prob) * 100).astype(int)  # int
+        if pre.dtype == 'float64':
+            prev_results['floats'].insert(0, True)
+        else:
+            prev_results['floats'].insert(0, False)
+
+        #print(pre)
         label = y_test
-        print(label)
+        #print(label)
         #print(metrics.roc_auc_score(label, pre))
 
         stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i)
 
-        prev_results = train.load_results()
+
         print('Station - DPPE-AUC protocol - Step I')
         new_results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i+1)
 
@@ -242,6 +250,20 @@ if __name__ == '__main__':
 
     # global testing of auc
     y_pred_prob = model.predict_proba(global_test_x)[:, -1]
+
+    y_true = global_test_y
+    y_pred = model.predict(global_test_x)
+    CM = metrics.confusion_matrix(y_true, y_pred)
+
+    TN = CM[0][0]
+    FN = CM[1][0]
+    TP = CM[1][1]
+    FP = CM[0][1]
+
+    print(TP)
+    print(FP)
+
+
     pre = np.array(y_pred_prob)
     label = global_test_y
     auc_gt2 = metrics.roc_auc_score(label, pre)
