@@ -1,37 +1,37 @@
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
-from sklearn.naive_bayes import MultinomialNB
+from sklearn.ensemble import GradientBoostingClassifier
 from main import *
 import pickle
 from collections import Counter
 
-
 d = {
-        'A': [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'R': [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'N': [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'D': [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'C': [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'E': [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'Q': [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'G': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'H': [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'I': [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'L': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'K': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'M': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        'F': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        'P': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-        'S': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-        'T': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-        'W': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        'Y': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-        'V': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-        '-': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-        'X': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}
+    'A': [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'R': [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'N': [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'D': [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'C': [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'E': [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'Q': [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'G': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'H': [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'I': [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'L': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'K': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'M': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    'F': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    'P': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    'S': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    'T': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    'W': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+    'Y': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    'V': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    '-': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    'X': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}
+
 
 class Train:
-    def __init__(self, model=None ,results=None):
+    def __init__(self, model=None, results=None):
         """
         :param results:
         """
@@ -82,6 +82,7 @@ class Train:
     def save_model(self, model):
         with open(self.encoded_model, "wb") as model_file:
             pickle.dump(model, model_file)
+
     def load_model(self):
         try:
             print("Loading previous results")
@@ -91,11 +92,10 @@ class Train:
         except:
             return None
 
+
 def data_generation(pre, label, data_path, station):
-    real_data = {'Pre': pre,
-            'Label': label,
-            'Flag': np.random.choice([1], size=len(label))
-            }
+    real_data = {'Pre': pre, 'Label': label,
+                 'Flag': np.random.choice([1], size=len(label))}
     df_real = pd.DataFrame(real_data, columns=['Pre', 'Label', 'Flag'])
 
     fake_patients = [int(len(pre) * .20), int(len(pre) * .50)]
@@ -145,14 +145,13 @@ if __name__ == '__main__':
     results = generate_keys(stations, DIRECTORY, results)
     train.save_results(results)
 
-    # For comparision of gt-auc and dppe-auc
+    # For comparison of gt-auc and dppe-auc
     global_test_x = []
     global_test_y = []
 
     for i in range(stations):
-        print('Station {}'.format(i+1))
-        filename = DIRECTORY + '/data/sequences_s' + str(i+1) + '.txt'
-        # encode
+        print('Station {}'.format(i + 1))
+        filename = DIRECTORY + '/data/sequences_s' + str(i + 1) + '.txt'
         data = defaultdict(list)
         model = train.load_model()
 
@@ -176,7 +175,7 @@ if __name__ == '__main__':
                         raise ValueError
                 data[label].append(item)
 
-        print("Number of Data Points:", {key: len(value) for (key, value) in data.items()})
+        print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
 
         data = {'CXCR4': data['CXCR4'],
                 'CCR5': data['CCR5']}
@@ -196,44 +195,31 @@ if __name__ == '__main__':
                 pass
 
         x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, shuffle=True)
-        print('Hold out test size: {}'.format(Counter(y_test)))
+        print('Hold out test size for comparison: {}'.format(Counter(y_test)))
         global_test_y.extend(y_test)
         global_test_x.extend(x_test)
         if model is None:
-            model = MultinomialNB(alpha=0.01)
-            acc = 0
-        else:
-            acc = model.score(x_test, y_test)
-            #print('GT AUC with new test data on previous model: {}'.format(acc))
-        classes = np.array([0, 1])
-        model.partial_fit(x_train, y_train, classes=classes)
-        y_pred = model.predict(x_test)
-        auc_gt = metrics.roc_auc_score(y_test, y_pred)
-        print('GT AUC with test data after training model: {}'.format(auc_gt))
+            model = GradientBoostingClassifier()
 
-        ## TODO DPPE-AUC difference to gt protocol fix (assumption: int conversion)
-        #y_pred_prob = model.predict_proba(x_test)[:, -1].astype(int)
+        classes = np.array([0, 1])
+        model.fit(x_train, y_train)
+
         y_pred_prob = model.predict_proba(x_test)[:, -1]
         prev_results = train.load_results()
 
-        # pre = np.array((y_pred_prob) * 10000).astype(int) # int
-        pre = np.array(y_pred_prob) # floats
-        #pre = np.array((y_pred_prob) * 100).astype(int)  # int
+        pre = np.array(y_pred_prob)
+
         if pre.dtype == 'float64':
             prev_results['floats'].insert(0, True)
         else:
             prev_results['floats'].insert(0, False)
 
-        #print(pre)
         label = y_test
-        #print(label)
-        #print(metrics.roc_auc_score(label, pre))
 
         stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i)
 
-
         print('Station - DPPE-AUC protocol - Step I')
-        new_results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i+1)
+        new_results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i + 1)
 
         train.save_model(model)
         train.save_results(new_results)
@@ -255,19 +241,6 @@ if __name__ == '__main__':
     y_pred = model.predict(global_test_x)
     CM = metrics.confusion_matrix(y_true, y_pred)
 
-    TN = CM[0][0]
-    FN = CM[1][0]
-    TP = CM[1][1]
-    FP = CM[0][1]
-
-    print(TP)
-    print(FP)
-
-
-    pre = np.array(y_pred_prob)
-    label = global_test_y
-    auc_gt2 = metrics.roc_auc_score(label, pre)
-    #print(auc_gt2)
     per = {'samples': []}
     auc_gt, _ = calculate_regular_auc(stations, per, DATA_STORAGE_PATH)
     diff = auc_gt - dppe_auc

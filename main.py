@@ -136,7 +136,6 @@ def calculate_regular_auc(stations, performance, regular_path):
     y = dfd["Label"]
     pred = dfd["Pre"]
 
-
     gt = metrics.roc_auc_score(y, pred)
 
     return gt, performance
@@ -230,7 +229,7 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, prev_results):
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
 
-    print(station_df["Pre"].to_list())
+    #print(station_df["Pre"].to_list())
     #print(station_df["Pre"]) # TODO uncomment to see obscured pre
     if prev_results['floats'][0] is True:
         station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(struct.pack("f", x)))
@@ -379,7 +378,6 @@ def dppe_auc_proxy(directory, results):
     concat_df.pop('Pre')
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
     df_new_index = sort_df.reset_index()
-    print(df_new_index["Dec_pre"].to_list())
     M = len(df_new_index)
     tp_values = []
     fp_values = []
@@ -393,8 +391,6 @@ def dppe_auc_proxy(directory, results):
         tmp_sum = sum_flags
         fp_values.append(add(agg_pk, sum_flags, mul_const(agg_pk, tp_values[-1], -1)))
 
-    print(decrypt(agg_sk, tp_values[-1]))
-    print(decrypt(agg_sk, fp_values[-1]))
     a = randint(1, 100)
     b = randint(1, 100)
 
@@ -420,21 +416,23 @@ def dppe_auc_proxy(directory, results):
     # determine indexes of threshold values
     thre_ind = []
     pred = df_new_index["Dec_pre"].to_list()
-    #print(pred)
     for i in range(M - 1):
         if pred[i] != pred[i + 1]:
             thre_ind.append(i)
 
     thre_ind = list(map(lambda x: x + 1, thre_ind))  # add one
-    print(thre_ind)
+    len_t = len(thre_ind)
     # Multiply with a and b respectively
-    Z_values = z_values(len(thre_ind) - 1)
+    Z_values = z_values(len_t)
 
     # sum over all n_3 and only store n_3
     N_3_sum = encrypt(agg_pk, 0)
-    for i in range(1, len(thre_ind)):
+    for i in range(1, len_t+1):
         pre_ind = thre_ind[i - 1]
-        cur_ind = thre_ind[i]
+        if i == len_t:
+            cur_ind = -1
+        else:
+            cur_ind = thre_ind[i]
         # Multiply with a and b respectively
         sTP_a = mul_const(agg_pk, add(agg_pk, tp_values[cur_ind], tp_values[pre_ind]), a)
         dFP_b = mul_const(agg_pk, add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
@@ -457,6 +455,7 @@ def dppe_auc_proxy(directory, results):
     results["N3"].append(proxy_decrypt(agg_sk, N_3_sum))
 
     return results
+
 
 def dppe_auc_station_final(directory, train_results):
     """
@@ -539,10 +538,8 @@ def experiment_2(res):
     plt.title('DPPE-AUC total runtime evaluation')
     plt.legend(loc="upper left")
     plt.savefig('test.png')
-    #plt.show()
 
     gt = perf['gt']
-    #print(gt)
     pp = perf['pp']
     diff = gt - pp
     print(diff)
@@ -580,7 +577,7 @@ if __name__ == "__main__":
         train = Train(results='results.pkl')
         differences = []
         for stations in station_list:
-            for i in range(loops): # repeat n times, to make boxplot
+            for i in range(loops):  # repeat n times, to make boxplot
                 performance['stations'].append(stations)
                 try:
                     shutil.rmtree(DIRECTORY + '/')
@@ -593,10 +590,11 @@ if __name__ == "__main__":
                         os.makedirs(dir)
 
                 # Experiment 1 - increase number of stations, but same sample size
-                create_synthetic_data_same_size(stations, subjects,[int(subjects*.20), int(subjects*.50)])
+                create_synthetic_data_same_size(stations, subjects, [int(subjects*.20), int(subjects*.50)])
 
                 # Experiment 2 - keep randomness in stations
                 #create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
+
                 results = train.load_results()
                 results = generate_keys(stations, DIRECTORY, results)
                 # Mimic train building process
