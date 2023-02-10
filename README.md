@@ -3,6 +3,14 @@ Distributed Privacy-Preserving exact - area under the curve; a novel method to c
 ## Install requirements
 Run `pip install -r requirements.txt` to ensure all requirements are fulfilled.
 
+
+## Showcase
+Sequence data of HIV-1 strains and the corresponding coreceptor binding of 10462 subjects was used. The raw data is from
+www.hiv.lanl.gov and processed with `/showcase/data/data_preparing.py`. A binary classifier was trained and the performance
+is evaluated against the commonly standard sklearn AUC library. Over 10 runs, the performance difference is within `e-16` which
+is due to floating type conversions in python.
+
+
 ## Synthetic Data generation
 Three different experiments are used to measure the performance.
 To generate sample data, specify the number of stations and subjects. Afterwards 30-50% of fake subjects are added randomly.

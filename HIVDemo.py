@@ -85,11 +85,12 @@ class Train:
 
     def load_model(self):
         try:
-            print("Loading previous results")
             with open(self.encoded_model, "rb") as model_file:
                 model = pickle.load(model_file)
+            print("Loading previous results")
             return model
-        except:
+        except Exception:
+            print("No previous data")
             return None
 
 
@@ -122,127 +123,128 @@ def data_generation(pre, label, data_path, station):
 
 if __name__ == '__main__':
     DIRECTORY = './showcase'
-    DATA_STORAGE_PATH = DIRECTORY + '/decrypted'
-    MODEL_PATH = DIRECTORY + '/pht_results/model.pkl'
-    RESULT_PATH = DIRECTORY + '/pht_results/results.pkl'
+    auc_diff = []
 
-    train = Train(model=MODEL_PATH, results=RESULT_PATH)
+    for run in range(10):
 
-    stations = 3
-    directories = [DIRECTORY + '/keys', DIRECTORY + '/encrypted', DIRECTORY + '/decrypted', DIRECTORY + '/pht_results']
-    for dir in directories:
-        try:
-            shutil.rmtree(dir)
-        except Exception as e:
-            print(e)
-    directories = [DIRECTORY + '/keys', DIRECTORY + '/decrypted',
-                   DIRECTORY + '/encrypted', DIRECTORY + '/pht_results']
-    for dir in directories:
-        if not os.path.exists(dir):
-            os.makedirs(dir)
+        DATA_STORAGE_PATH = DIRECTORY + '/decrypted'
+        MODEL_PATH = DIRECTORY + '/pht_results/model.pkl'
+        RESULT_PATH = DIRECTORY + '/pht_results/results.pkl'
 
-    results = train.load_results()
-    results = generate_keys(stations, DIRECTORY, results)
-    train.save_results(results)
+        train = Train(model=MODEL_PATH, results=RESULT_PATH)
 
-    # For comparison of gt-auc and dppe-auc
-    global_test_x = []
-    global_test_y = []
-
-    for i in range(stations):
-        print('Station {}'.format(i + 1))
-        filename = DIRECTORY + '/data/sequences_s' + str(i + 1) + '.txt'
-        data = defaultdict(list)
-        model = train.load_model()
-
-        feature_len = None
-        with open(filename, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                spt = line.split()
-                seq = spt[1].strip()
-                label = spt[2].strip()
-                item = []
-                for ch in seq:
-                    item.extend(d[ch])
-                N = len(item)
-                if feature_len is None:
-                    feature_len = N
-                else:
-                    if feature_len != N:
-                        raise ValueError
-                data[label].append(item)
-
-        print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
-
-        data = {'CXCR4': data['CXCR4'],
-                'CCR5': data['CCR5']}
-
-        list_key_value = [[k, v] for k, v in data.items()]
-
-        X = []
-        Y = []
-
-        for j in range(len(data['CCR5'])):
-            X.append(data['CCR5'][j])
-            Y.append(1)
+        stations = 3
+        directories = [DIRECTORY + '/keys', DIRECTORY + '/encrypted', DIRECTORY + '/decrypted',
+                       DIRECTORY + '/pht_results']
+        for path in directories:
             try:
-                X.append(data['CXCR4'][j])
-                Y.append(0)
-            except Exception:
-                pass
+                shutil.rmtree(path)
+            except Exception as e:
+                print(e)
+        directories = [DIRECTORY + '/keys', DIRECTORY + '/decrypted',
+                       DIRECTORY + '/encrypted', DIRECTORY + '/pht_results']
+        for path in directories:
+            if not os.path.exists(path):
+                os.makedirs(path)
 
-        x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, shuffle=True)
-        print('Hold out test size for comparison: {}'.format(Counter(y_test)))
-        global_test_y.extend(y_test)
-        global_test_x.extend(x_test)
-        if model is None:
-            model = GradientBoostingClassifier()
+        results = train.load_results()
+        results = generate_keys(stations, DIRECTORY, results)
+        train.save_results(results)
 
-        classes = np.array([0, 1])
-        model.fit(x_train, y_train)
+        # For comparison of gt-auc and dppe-auc
+        global_test_x = []
+        global_test_y = []
 
-        y_pred_prob = model.predict_proba(x_test)[:, -1]
-        prev_results = train.load_results()
+        for i in range(stations):
+            print('Station {}'.format(i + 1))
+            filename = DIRECTORY + '/data/sequences_s' + str(i + 1) + '.txt'
+            data = defaultdict(list)
+            model = train.load_model()
 
-        pre = np.array(y_pred_prob)
+            feature_len = None
+            with open(filename, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    spt = line.split()
+                    seq = spt[1].strip()
+                    label = spt[2].strip()
+                    item = []
+                    for ch in seq:
+                        item.extend(d[ch])
+                    N = len(item)
+                    if feature_len is None:
+                        feature_len = N
+                    else:
+                        if feature_len != N:
+                            raise ValueError
+                    data[label].append(item)
 
-        if pre.dtype == 'float64':
-            prev_results['floats'].insert(0, True)
-        else:
-            prev_results['floats'].insert(0, False)
+            print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
 
-        label = y_test
+            data = {'CXCR4': data['CXCR4'],
+                    'CCR5': data['CCR5']}
 
-        stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i)
+            list_key_value = [[k, v] for k, v in data.items()]
 
-        print('Station - DPPE-AUC protocol - Step I')
-        new_results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i + 1)
+            X = []
+            Y = []
 
-        train.save_model(model)
+            for j in range(len(data['CCR5'])):
+                X.append(data['CCR5'][j])
+                Y.append(1)
+                try:
+                    X.append(data['CXCR4'][j])
+                    Y.append(0)
+                except Exception:
+                    pass
+
+            x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, shuffle=True)
+            print('Hold out test size for comparison: {}'.format(Counter(y_test)))
+            global_test_y.extend(y_test)
+            global_test_x.extend(x_test)
+            if model is None:
+                model = GradientBoostingClassifier()
+
+            classes = np.array([0, 1])
+            model.fit(x_train, y_train)
+
+            y_pred_prob = model.predict_proba(x_test)[:, -1]
+            prev_results = train.load_results()
+
+            pre = np.array(y_pred_prob)
+
+            if pre.dtype == 'float64':
+                prev_results['floats'].insert(0, True)
+            else:
+                prev_results['floats'].insert(0, False)
+
+            label = y_test
+
+            stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i)
+
+            print('Station - DPPE-AUC protocol - Step I')
+            new_results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i + 1)
+
+            train.save_model(model)
+            train.save_results(new_results)
+            print('\n')
+
+        print('Starting proxy protocol')
+        results = train.load_results()
+        new_results = dppe_auc_proxy(DIRECTORY, results)
         train.save_results(new_results)
-        print('\n')
 
-    print('Starting proxy protocol')
-    results = train.load_results()
-    new_results = dppe_auc_proxy(DIRECTORY, results)
-    train.save_results(new_results)
+        results = train.load_results()
+        final_model = train.load_model()
+        print('Station - DPPE-AUC protocol - Step II')
+        dppe_auc = dppe_auc_station_final(DIRECTORY, results)
 
-    results = train.load_results()
-    print('Station - DPPE-AUC protocol - Step II')
-    dppe_auc = dppe_auc_station_final(DIRECTORY, results)
-
-    # global testing of auc
-    y_pred_prob = model.predict_proba(global_test_x)[:, -1]
-
-    y_true = global_test_y
-    y_pred = model.predict(global_test_x)
-    CM = metrics.confusion_matrix(y_true, y_pred)
-
-    per = {'samples': []}
-    auc_gt, _ = calculate_regular_auc(stations, per, DATA_STORAGE_PATH)
-    diff = auc_gt - dppe_auc
-    print('GT-AUC: ', auc_gt)
-    print('Difference DPPE-AUC to GT: ', diff)
+        per = {'samples': []}
+        auc_gt, _ = calculate_regular_auc(stations, per, DATA_STORAGE_PATH)
+        diff = auc_gt - dppe_auc
+        print('GT-AUC: ', auc_gt)
+        print('Difference DPPE-AUC to GT: ', diff)
+        auc_diff.append(diff)
+    print('Average difference over {} runs: {}'.format(len(auc_diff), sum(auc_diff) / len(auc_diff)))
