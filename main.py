@@ -85,9 +85,8 @@ def create_synthetic_data(num_stations=int, samples=int, fake_patients=None):
     for station_i in range(num_stations):
         valid = False
         while not valid:
-            fake_data_val = randint(fake_patients[0], fake_patients[1]) # random number flag value in given percentage range
+            fake_data_val = randint(fake_patients[0], fake_patients[1])
             data = {"Pre": np.random.random(size=samples+fake_data_val),
-                    #"Pre": np.random.randint(low=5, high=10000, size=samples+fake_data_val),
                     "Label": np.random.choice([0, 1], size=samples+fake_data_val, p=[0.1, 0.9]),
                     "Flag": np.random.choice(np.concatenate([[1] * samples, [0] * fake_data_val]),
                                              samples+fake_data_val, replace=False)}
@@ -105,9 +104,22 @@ def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients
             samples_each = samples_each + left_over
         valid = False
         while not valid:
-            fake_data_val = randint(fake_patients[0], fake_patients[1])  # random number flag value in given percentage range
+            fake_data_val = randint(fake_patients[0], fake_patients[1])
             data = {"Pre": np.random.random(size=samples_each),
-                    #"Pre": np.random.randint(low=5, high=10000, size=samples_each),
+                    "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
+                    "Flag": np.random.choice(np.concatenate([[1] * samples_each, [0] * fake_data_val]),
+                                             samples_each, replace=False)}
+            valid = make_df(data, valid, station_i)
+
+
+def create_synthetic_different_sizes(num_stations=int, samples=None, fake_patients=None):
+    for station_i in range(num_stations):
+        samples_each = samples[0][station_i]
+        valid = False
+        while not valid:
+            fake_data_val = randint(fake_patients[0], fake_patients[1])  # random number flag values
+            fake_data_val = fake_patients
+            data = {"Pre": np.random.random(size=samples_each),
                     "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
                     "Flag": np.random.choice(np.concatenate([[1] * samples_each, [0] * fake_data_val]),
                                              samples_each, replace=False)}
@@ -127,7 +139,6 @@ def calculate_regular_auc(stations, performance, regular_path):
     performance['samples'].append(len(concat_df))
     print('Use data from {} stations. Total of {} subjects (including flag subjects) '.format(stations, len(concat_df)))
 
-    #sort_df = concat_df.sort_values(by='Pre', ascending=False).reset_index()
     sort_df = concat_df.sort_values(by='Pre', ascending=False)
 
     filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
@@ -224,23 +235,16 @@ def encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, prev_results):
     """
     Encrypt dataframe of given station dataframe with paillier public key of aggregator and random values
     """
-    #print('Start encrypting table with {} subjects from station {}'.format(len(station_df), station))
-    #tic = time.perf_counter()
     station_df["Pre"] *= r1
     station_df["Pre"] += r2
 
-    #print(station_df["Pre"].to_list())
-    #print(station_df["Pre"]) # TODO uncomment to see obscured pre
     if prev_results['floats'][0] is True:
         station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(struct.pack("f", x)))
     else:
         station_df["Pre"] = station_df["Pre"].apply(lambda x: Fernet(symmetric_key).encrypt(int(x).to_bytes(4, 'big')))
 
-    #print(len(station_df["Pre"][0]))
     station_df["Label"] = station_df["Label"].apply(lambda x: encrypt(agg_pk, x))
     station_df["Flag"] = station_df["Flag"].apply(lambda x: encrypt(agg_pk, x))
-    #toc = time.perf_counter()
-    #print(f'Encryption time of table {toc - tic:0.4f} seconds')
     return station_df
 
 
@@ -299,16 +303,16 @@ def decrypt_symmetric_key(ciphertext, directory):
     return decrypted_symmetric_key
 
 
-def pp_auc_protocol(station_df, prev_results, directory=str, station=int):
+def pp_auc_protocol(station_df, prev_results, directory=str, station=int, max_value=int):
     """
     Perform PP-AUC protocol at specific station given dataframe
     """
 
     agg_pk = prev_results['aggregator_paillier_pk']
-    symmetric_key = Fernet.generate_key() # represents k1 k_n
+    symmetric_key = Fernet.generate_key()  # represents k1 k_n
     if station == 1:
-        r1 = randint(1, 100)  # random value between 1 to 100
-        r2 = randint(1, 100)
+        r1 = randint(1, max_value)
+        r2 = randint(1, max_value)
 
         enc_table = encrypt_table(station_df, agg_pk, r1, r2, symmetric_key, prev_results)
         # Save for transparency the table - not required
@@ -350,7 +354,7 @@ def z_values(n):
     return l + [-sum(l)]
 
 
-def dppe_auc_proxy(directory, results):
+def dppe_auc_proxy(directory, results, max_value):
     """
     Simulation of aggregator service - globally computes privacy preserving AUC table as proxy station
     """
@@ -377,6 +381,9 @@ def dppe_auc_proxy(directory, results):
     concat_df = pd.concat(df_list)
     concat_df.pop('Pre')
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
+    unique_values = sort_df['Dec_pre'].value_counts()
+    print(sort_df['Dec_pre'])
+    print(unique_values)
     df_new_index = sort_df.reset_index()
     M = len(df_new_index)
     tp_values = []
@@ -391,16 +398,15 @@ def dppe_auc_proxy(directory, results):
         tmp_sum = sum_flags
         fp_values.append(add(agg_pk, sum_flags, mul_const(agg_pk, tp_values[-1], -1)))
 
-    a = randint(1, 100)
-    b = randint(1, 100)
-
+    a = randint(1, max_value)
+    b = randint(1, max_value)
     # Denominator
     # TP_A is summation of labels (TP)
     tp_a_mul = mul_const(agg_pk, tp_values[-1], a)
     fp_a_mul = mul_const(agg_pk, fp_values[-1], b)
 
-    r_1A = randint(1, 100)
-    r_2A = randint(1, 100)
+    r_1A = randint(1, max_value)
+    r_2A = randint(1, max_value)
     D1 = add_const(agg_pk, tp_a_mul, r_1A)
     D2 = add_const(agg_pk, fp_a_mul, r_2A)
     D3_1 = mul_const(agg_pk, tp_a_mul, r_2A)
@@ -419,7 +425,7 @@ def dppe_auc_proxy(directory, results):
     for i in range(M - 1):
         if pred[i] != pred[i + 1]:
             thre_ind.append(i)
-
+    print('Threshold values: {}'.format(len(thre_ind)))
     thre_ind = list(map(lambda x: x + 1, thre_ind))  # add one
     len_t = len(thre_ind)
     # Multiply with a and b respectively
@@ -427,7 +433,7 @@ def dppe_auc_proxy(directory, results):
 
     # sum over all n_3 and only store n_3
     N_3_sum = encrypt(agg_pk, 0)
-    for i in range(1, len_t+1):
+    for i in range(1, len_t + 1):
         pre_ind = thre_ind[i - 1]
         if i == len_t:
             cur_ind = -1
@@ -436,9 +442,8 @@ def dppe_auc_proxy(directory, results):
         # Multiply with a and b respectively
         sTP_a = mul_const(agg_pk, add(agg_pk, tp_values[cur_ind], tp_values[pre_ind]), a)
         dFP_b = mul_const(agg_pk, add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
-        r1_i = randint(1, 100)
-        r2_i = randint(1, 100)
-
+        r1_i = randint(1, max_value)
+        r2_i = randint(1, max_value)
         n_1 = add_const(agg_pk, sTP_a, r1_i)
         results["N1"].append(proxy_decrypt(agg_sk, n_1))
 
@@ -500,7 +505,7 @@ def experiment_1(res):
     s3_data = df.loc[df['Stations'] == 3]
     s6_data = df.loc[df['Stations'] == 6]
     s9_data = df.loc[df['Stations'] == 9]
-    fig, (ax1, ax2, ax3) = plt.subplots(1,3)
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
     fig.suptitle(str(10) + ' runs with ' + str(res['samples'][0]) + ' subjects')
     ax1.set_ylabel('Time (sec)')
 
@@ -516,7 +521,7 @@ def experiment_1(res):
     ax2.boxplot(s6_data['Total'])
     ax3.boxplot(s9_data['Total'])
     fig.tight_layout()
-    plt.savefig('germany_sub_boxplot.png')
+    plt.savefig('exmperiment_1_boxplot.png')
 
 
 def experiment_2(res):
@@ -551,10 +556,14 @@ if __name__ == "__main__":
     """
 
     DIRECTORY = './data'
+    MAX = 100
+    FAKES = [0.1, 0.6]
     # Experiment 1
     station_list = [3, 6, 9]
     subject_list = [150]
     loops = 10
+
+    unbalanced_subj = [[10, 90, 10]]
 
     # Experiment 2 # uncomment to run runtime measurement
     #station_list = [3]
@@ -590,10 +599,12 @@ if __name__ == "__main__":
                         os.makedirs(dir)
 
                 # Experiment 1 - increase number of stations, but same sample size
-                create_synthetic_data_same_size(stations, subjects, [int(subjects*.20), int(subjects*.50)])
+                create_synthetic_data_same_size(stations, subjects, [int(subjects*FAKES[0]), int(subjects*FAKES[1])])
 
                 # Experiment 2 - keep randomness in stations
-                #create_synthetic_data(stations, subjects, [int(subjects*.30), int(subjects*.50)])
+                #create_synthetic_data(stations, subjects, [int(subjects*FAKES[0]), int(subjects*FAKES[1])])
+
+                #create_synthetic_different_sizes(stations, unbalanced_subj, [int(subjects * .20), int(subjects * .50)])
 
                 results = train.load_results()
                 results = generate_keys(stations, DIRECTORY, results)
@@ -616,10 +627,10 @@ if __name__ == "__main__":
                         prev_results['floats'].insert(0, False)
 
                     t1 = time.perf_counter()
-                    results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i+1)
+                    results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i+1, max_value=MAX)
                     t2 = time.perf_counter()
                     times.append(t2 - t1)
-
+                    print('Station {} step 1 time {}'.format(i + 1, times[-1]))
                     # remove at last station all encrypted noise values
                     if i is stations - 1:
                         results.pop('encrypted_r1')
@@ -634,21 +645,21 @@ if __name__ == "__main__":
                 results = train.load_results()
 
                 t3 = time.perf_counter()
-                results = dppe_auc_proxy(DIRECTORY, results)
+                results = dppe_auc_proxy(DIRECTORY, results, max_value=MAX)
                 t4 = time.perf_counter()
 
                 performance['time']['proxy'].append(t4 - t3)
                 print(f'Execution time by proxy station {t4 - t3:0.4f} seconds')
 
-                train.save_results(results) # simulate push and pull
+                train.save_results(results)  # simulate push and pull
                 results = train.load_results()
-
-                t1 = time.perf_counter()
-                auc_pp = dppe_auc_station_final(DIRECTORY, results)
-                t2 = time.perf_counter()
-                local_dppe = t2 - t1
-                performance['time']['stations_2'].append(local_dppe * stations)
-                print(f'Final AUC execution time at station {t2 - t1:0.4f} seconds')
+                for i in range(stations):
+                    t1 = time.perf_counter()
+                    auc_pp = dppe_auc_station_final(DIRECTORY, results)
+                    t2 = time.perf_counter()
+                    local_dppe = t2 - t1
+                    performance['time']['stations_2'].append(local_dppe)
+                    print(f'Final AUC execution time at station {i+1} {local_dppe:0.4f} seconds')
 
                 performance['pp-auc'].append(auc_pp)
 
