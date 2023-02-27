@@ -8,12 +8,13 @@ Run `pip install -r requirements.txt` to ensure all requirements are fulfilled.
 Sequence data of HIV-1 strains and the corresponding coreceptor binding of 10462 subjects was used. The raw data is from
 www.hiv.lanl.gov and processed with `/showcase/data/data_preparing.py`. A binary classifier was trained and the performance
 is evaluated against the commonly standard sklearn AUC library. Over 10 runs, the performance difference is within `e-16` which
-is due to floating type conversions in python.
+is due to floating type conversions in python. Furthermore, a evaluation of the runtime regarding random number generation 
+and flag data generation was done.
 
 
 ## Synthetic Data generation
-Three different experiments are used to measure the performance.
-To generate sample data, specify the number of stations and subjects. Afterwards 30-50% of fake subjects are added randomly.
+Two different experiments are used to measure the runtime with synthetic data.
+To generate sample data, specify the number of stations and subjects. In the following experiments 10-60% of flag subjects are added randomly.
 
 ## Experiments
 The performance is evaluated against the commonly standard sklearn AUC library.
@@ -22,7 +23,7 @@ The performance is evaluated against the commonly standard sklearn AUC library.
 In experiment 1 the number of samples are identical, but the number of input parties varies.
 The execution time is calculated absolute with each step and party for 10 runs. Therefore, the total execution time differs with the number of input parties.
 
-![plot 1](./plots/exp1_sub.png)
+![plot 1](./plots/exp1.png)
 
 
 ### Varying number of input samples

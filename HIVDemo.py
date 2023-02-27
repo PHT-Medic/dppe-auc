@@ -62,8 +62,7 @@ class Train:
                     'D3': [],
                     'N1': [],
                     'N2': [],
-                    'N3': [],
-                    'floats': []
+                    'N3': []
                     }
 
     def save_results(self, results):
@@ -94,50 +93,66 @@ class Train:
             return None
 
 
-def data_generation(pre, label, data_path, station, fake):
+def data_generation(pre, label, data_path, station, fake, consider_dist, save):
     real_data = {'Pre': pre, 'Label': label,
                  'Flag': np.random.choice([1], size=len(label))}
     df_real = pd.DataFrame(real_data, columns=['Pre', 'Label', 'Flag'])
     fake_data_val = int(len(pre) * fake)
     print('Fake subjects for dppe-auc {}'.format(fake_data_val))
 
-    tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-    values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]
-    prob = list(df_real['Pre'].value_counts(normalize=True, ascending=False))
-    fake_data = {"Pre": random.choices(values, weights=prob, k=fake_data_val),
-                 "Label": np.random.choice([0], size=fake_data_val),
-                 "Flag": np.random.choice([0], size=fake_data_val)
-                 }
+    if consider_dist:
+        tmp_val = list(df_real['Pre'].sort_values(ascending=False))
+        values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]
+        prob = list(df_real['Pre'].value_counts(normalize=True, ascending=False))
+        fake_data = {"Pre": random.choices(values, weights=prob, k=fake_data_val),
+                     "Label": np.random.choice([0], size=fake_data_val),
+                     "Flag": np.random.choice([0], size=fake_data_val)
+                     }
+    else:
+        fake_data = {"Pre": np.random.random(size=fake_data_val),
+                     "Label": np.random.choice([0], size=fake_data_val),
+                     "Flag": np.random.choice([0], size=fake_data_val)
+                     }
     df_fake = pd.DataFrame(fake_data, columns=['Pre', 'Label', 'Flag'])
 
     dfs = [df_real, df_fake]
     merged = pd.concat(dfs, axis=0)
     df = merged.sample(frac=1).reset_index(drop=True)
-
-    df.to_pickle(data_path + '/data_s' + str(station + 1) + '.pkl')
+    # plot_input_data(df, df_real, df_fake, station)
+    if save:
+        df.to_pickle(data_path + '/data_s' + str(station + 1) + '.pkl')
 
     return df
 
 
 if __name__ == '__main__':
     DIRECTORY = './showcase'
-    auc_diff = []
 
-    # Privacy related
+    SIMULATE_PUSH_PULL = False
+    SAVE_KEYS = False
+    SAVE_DATA = False
+    CONSIDER_DIST = False  # consider distribution of real data for flag generation
+
+    EXPERIMENT_1 = True
+
     max_values = [10, 100, 1000, 10000, 100000]
-    max = 100 # best max is 100
+    max = 100
 
-    size_fake = [0.1, 0.3, 0.5, 0.6, 0.8, 1, 2, 3]
+    size_fake = [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9, 2.1, 2.3, 2.5, 2.7, 3]
+    auc_diff = []
     total_times = []
-    total_repetitions = 10
+    total_repetitions = 5
+    stations = 3
 
-    best_time = 40
+    best_time = 100
     best_diff = 10
+    per = {'samples': [],
+           'flags': [],
+           'total_time': []}
 
-    # for run in range(len(size_fake)):  # uncomment to evaluate max value
-        # max = max_values[run]
-
-    for run in range(len(size_fake)):  # comment these two lines, if max values are derived
+    # for run in range(len(max_values)):  # uncomment to evaluate max value
+    #    max = max_values[run]
+    for run in range(len(size_fake)):  # comment these two lines, if max values should be determined
         fakes = size_fake[run]
         for repetition in range(total_repetitions):
             DATA_STORAGE_PATH = DIRECTORY + '/decrypted'
@@ -146,23 +161,29 @@ if __name__ == '__main__':
 
             train = Train(model=MODEL_PATH, results=RESULT_PATH)
 
-            stations = 3
-            directories = [DIRECTORY + '/keys', DIRECTORY + '/encrypted', DIRECTORY + '/decrypted',
-                           DIRECTORY + '/pht_results']
-            for path in directories:
-                try:
-                    shutil.rmtree(path)
-                except Exception as e:
-                    print(e)
-            directories = [DIRECTORY + '/keys', DIRECTORY + '/decrypted',
-                           DIRECTORY + '/encrypted', DIRECTORY + '/pht_results']
-            for path in directories:
-                if not os.path.exists(path):
-                    os.makedirs(path)
+            try:
+                remove_dirs = [DIRECTORY + '/synthetic', DIRECTORY + '/encrypted',
+                               DIRECTORY + '/keys', DIRECTORY + '/pht_results']
+                for rm_dir in remove_dirs:
+                    shutil.rmtree(rm_dir)
+            except Exception as e:
+                pass
+            directories = [DIRECTORY + '/pht_results', DIRECTORY + '/decrypted']
+            if SAVE_DATA:
+                directories = [DIRECTORY, DIRECTORY + '/encrypted']
+            elif SAVE_KEYS:
+                directories.append(DIRECTORY)
+                directories.append(DIRECTORY + '/keys')
+            for dir in directories:
+                if not os.path.exists(dir):
+                    os.makedirs(dir)
 
             results = train.load_results()
-            results = generate_keys(stations, DIRECTORY, results)
-            train.save_results(results)
+            results, keys = generate_keys(stations, DIRECTORY, results, SAVE_KEYS)
+
+            if SIMULATE_PUSH_PULL:
+                train.save_results(results)
+
             times = {"station_1": [],
                      "proxy": [],
                      "station_2": [],
@@ -193,9 +214,7 @@ if __name__ == '__main__':
                             if feature_len != N:
                                 raise ValueError
                         data[label].append(item)
-
                 print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
-
                 data = {'CXCR4': data['CXCR4'],
                         'CCR5': data['CCR5']}
 
@@ -224,69 +243,72 @@ if __name__ == '__main__':
                 model.fit(x_train, y_train)
 
                 y_pred_prob = model.predict_proba(x_test)[:, -1]
-                prev_results = train.load_results()
+
+                if SIMULATE_PUSH_PULL:
+                    results = train.load_results()
 
                 pre = np.array(y_pred_prob)
 
-                if pre.dtype == 'float64':
-                    prev_results['floats'].insert(0, True)
-                else:
-                    prev_results['floats'].insert(0, False)
-
                 label = y_test
-                stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, fake=fakes)
+                stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, fake=fakes,
+                                          consider_dist=CONSIDER_DIST, save=True)
                 print('Station - DPPE-AUC protocol - Step I')
 
                 t1 = time.perf_counter()
-                new_results = pp_auc_protocol(stat_df, prev_results, DIRECTORY, station=i + 1, max_value=max)
+                results = pp_auc_protocol(stat_df, results, DIRECTORY, station=i + 1, max_value=max,
+                                          save_data=SAVE_DATA, save_keys=SAVE_KEYS, keys=keys)
                 t2 = time.perf_counter()
                 times["station_1"].append(t2 - t1)
                 print('Station {} step 1 time {}'.format(i + 1, times["station_1"][-1]))
                 total_s1 += times["station_1"][-1]
                 train.save_model(model)
-                train.save_results(new_results)
+
+                if SIMULATE_PUSH_PULL:
+                    train.save_results(results)
                 print('\n')
 
             print('Starting proxy protocol')
-            results = train.load_results()
+            if SIMULATE_PUSH_PULL:
+                results = train.load_results()
+
             times['s_1_total'].append(total_s1)
             t3 = time.perf_counter()
-            new_results = dppe_auc_proxy(DIRECTORY, results, max)
+            results = dppe_auc_proxy(DIRECTORY, results, max_value=max, save_keys=SAVE_KEYS, keys=keys)
             t4 = time.perf_counter()
-            times['proxy'].append(t4-t3)
+            times['proxy'].append(t4 - t3)
             print(f'Execution time by proxy station {times["proxy"][-1]:0.4f} seconds')
 
-            train.save_results(new_results)
+            if SIMULATE_PUSH_PULL:
+                train.save_results(results)
+                results = train.load_results()
 
-            results = train.load_results()
-            final_model = train.load_model()
             print('Station - DPPE-AUC protocol - Step II')
             t5 = time.perf_counter()
-            dppe_auc = dppe_auc_station_final(DIRECTORY, results)
+            dppe_auc = dppe_auc_station_final(DIRECTORY, results, SAVE_KEYS, keys)
             t6 = time.perf_counter()
-            times['station_2'].append(t6-t5)
+            times['station_2'].append(t6 - t5)
 
             total_time = times['s_1_total'][-1] + times['proxy'][-1] + (times['station_2'][-1] * stations)
             print(f'Execution time by station - Step II {times["station_2"][-1]:0.4f} seconds')
-            per = {'samples': []}
-            auc_gt, _ = calculate_regular_auc(stations, per, DATA_STORAGE_PATH)
+            print('Total time {}'.format(total_time))
+
+            auc_gt, per = calculate_regular_auc(stations, per, DATA_STORAGE_PATH, save=True, data=data)
             diff = auc_gt - dppe_auc
             print('GT-AUC: ', auc_gt)
             print('Difference DPPE-AUC to GT: ', diff)
+            per['total_time'].append(total_time)
             total_times.append(total_time)
 
             auc_diff.append(diff)
         print('\n')
         avg_diff = sum(auc_diff) / len(auc_diff)
-        print('Average differences over {} runs with %fake {} by {} and all {}'.format(len(auc_diff), fakes, avg_diff , auc_diff))
+        print('Average differences over {} runs with %fake {} by {} and all {}'.format(len(auc_diff), fakes * 100,
+                                                                                       avg_diff, auc_diff))
         print('Max values for range of parameters: {}'.format(max))
-        avg_time = sum(total_times)/len(total_times)
-        print('Times each {} and average runtime {}'.format(total_times, avg_time))
-        if avg_time <= best_time and avg_diff <= best_diff:
-            best_time = avg_time
-            best_diff = avg_diff
-            best_f = fakes
+        avg_time = sum(total_times) / len(total_times)
+        print('Average time total {} and each runtime {}'.format(avg_time, total_times))
+
         auc_diff = []
         total_times = []
         print('\n')
-    print('Best diff {} and best time {} with {} fake samples on average over {} runs'.format(best_diff, best_time, best_f, total_repetitions))
+    print(per)
