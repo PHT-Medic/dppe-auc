@@ -659,6 +659,7 @@ if __name__ == "__main__":
                      'total_step_1': []
                      },
                    'samples': [],
+                   'flags': [],
                    'stations': [],
                    'pp-auc': [],
                    'gt-auc': []
