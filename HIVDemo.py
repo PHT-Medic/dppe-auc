@@ -370,7 +370,7 @@ if __name__ == '__main__':
 
         exact_avg_diff = sum(exact_auc_diff) / len(exact_auc_diff)
         print('Exact average differences over {} runs with by {} and all {}'.format(len(exact_auc_diff),
-                                                                                    exact_auc_diff, exact_auc_diff))
+                                                                                    exact_avg_diff, exact_auc_diff))
         exact_avg_time = sum(exact_total_times) / len(exact_total_times)
         print('Exact average time total {} and each runtime {}'.format(exact_avg_time, exact_total_times))
         print('\n')
@@ -389,7 +389,7 @@ if __name__ == '__main__':
         approx_total_times.append(total_time_approx)
 
         approx_avg_diff = sum(approx_auc_diff) / len(approx_auc_diff)
-        print('Approx average differences over {} runs with by {} and all {}'.format(len(approx_auc_diff), approx_auc_diff, approx_auc_diff))
+        print('Approx average differences over {} runs with by {} and all {}'.format(len(approx_auc_diff), approx_avg_diff, approx_auc_diff))
         approx_avg_time = sum(approx_total_times) / len(approx_total_times)
         print('Approx average time total {} and each runtime {}'.format(approx_avg_time, approx_total_times))
 
