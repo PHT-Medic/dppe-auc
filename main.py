@@ -932,10 +932,10 @@ if __name__ == "__main__":
 
                 diff_approx = auc_gt_approx - auc_pp_approx
                 differences_approx.append(diff_approx)
-                per['exact']['diff'].append(diff_approx)
+                per['approx']['diff'].append(diff_approx)
 
-                print('Difference DPPE-AUC (exact)  to GT: ', diff_approx)
-                print('Difference DPPA-AUC (approx) to GT: ', diff_exact)
+                print('Difference DPPE-AUC (exact)  to GT: ', diff_exact)
+                print('Difference DPPA-AUC (approx) to GT: ', diff_approx)
                 print('\n')
 
                 print("Exact avg difference {} over {} runs".format(sum(differences_exact) / len(differences_exact),
