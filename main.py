@@ -272,7 +272,7 @@ def calculate_regular_auc(stations, performance, regular_path, save, data, APPRO
                                                                                                      len(concat_df),
                                                                                                      flags))
         filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
-        # filtered_df = sort_df
+
     dfd = filtered_df.copy()
     dfd["Pre"] = filtered_df["Pre"]
     y = dfd["Label"]
@@ -839,12 +839,12 @@ if __name__ == "__main__":
                     t2 = time.perf_counter()
                     times_approx.append(t2 - t1)
 
-                    t1 = time.perf_counter()
+                    t_1 = time.perf_counter()
                     results_exact = dppe_auc_protocol(exact_stat_df, results['exact'], DIRECTORY, station=i + 1,
                                                       max_value=MAX,
                                                       save_data=SAVE_DATA, save_keys=SAVE_KEYS, keys=keys_exact)
-                    t2 = time.perf_counter()
-                    times_exact.append(t2 - t1)
+                    t_2 = time.perf_counter()
+                    times_exact.append(t_2 - t_1)
                     print('Exact Station {} step 1 time {}'.format(i + 1, times_exact[-1]))
                     print('Approx Station {} step 1 time {}'.format(i + 1, times_approx[-1]))
 
@@ -857,11 +857,9 @@ if __name__ == "__main__":
                         train.save_results(results)
 
                 print(f'Exact run {run} total execution time at stations - Step 1 {sum(times_exact):0.4f} seconds')
-                print(
-                    f'Exact run {run} average execution time at stations - Step 1 {sum(times_exact) / len(times_exact):0.4f} seconds')
+                print(f'Exact run {run} average execution time at stations - Step 1 {sum(times_exact) / len(times_exact):0.4f} seconds')
                 print(f'Approx run {run} total execution time at stations - Step 1 {sum(times_approx):0.4f} seconds')
-                print(
-                    f'Approx run {run} average execution time at stations - Step 1 {sum(times_approx) / len(times_approx):0.4f} seconds')
+                print(f'Approx run {run} average execution time at stations - Step 1 {sum(times_approx) / len(times_approx):0.4f} seconds')
 
                 per['approx']['time']['stations_1'].append(sum(times_approx) / len(times_approx))
                 per['approx']['time']['total_step_1'].append(sum(times_approx))
@@ -945,8 +943,8 @@ if __name__ == "__main__":
                     sum(per['exact']['total_times']) / len(per['exact']['total_times']),
                     len(per['exact']['total_times'])))
 
-                print("Approx avg difference {} over {} runs".format(sum(differences_exact) / len(differences_exact),
-                                                                     len(differences_exact)))
+                print("Approx avg difference {} over {} runs".format(sum(differences_approx) / len(differences_approx),
+                                                                     len(differences_approx)))
                 print("Approx avg exec time {} over {} runs".format(
                     sum(per['approx']['total_times']) / len(per['approx']['total_times']),
                     len(per['approx']['total_times'])))
