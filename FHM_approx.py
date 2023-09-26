@@ -19,10 +19,11 @@ def create_synthetic_data_dppa(num_stations=int, df=None, save=None):  # edited
     dfs = []
 
     for station_i in range(num_stations):
-
+        real = df[station_i][df[station_i]['Flag'] == 1]
         real_data = {
-            "Pre": df[station_i].Pre,
-            "Label": df[station_i].Label,
+            "Pre": real.Pre,
+            "Label": real.Label,
+
         }
         df_real = pd.DataFrame(real_data, columns=['Pre', 'Label'])
 

@@ -194,6 +194,7 @@ def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients
                      }
         df_fake = return_df(fake_data)
         # print("Size fake: {}".format(len(df_fake)))
+
         df = [df_real, df_fake]
 
         merged = pd.concat(df, axis=0)
