@@ -154,9 +154,7 @@ def data_generation(pre, label, data_path, station, run, save, APPROX):
                      }
         df_fake = return_df(fake_data)
         print("Size fake: {}".format(len(df_fake)))
-        # TODO plot in
-        df = [df_real, df_fake] # todo remove this
-        #df = [df_real]
+        df = [df_real, df_fake]
         merged = pd.concat(df, axis=0)
         df = merged.sample(frac=1).reset_index(drop=True)
         plot_input_data(df, df_real, df_fake, station, run, proxy=False)
@@ -235,7 +233,7 @@ if __name__ == '__main__':
                            "proxy": [],
                            "station_2": [],
                            "s_1_total": []}}
-
+        data_approx, data_exact = [], []
         for i in range(stations):
             print('Station {}'.format(i + 1))
             filename = DIRECTORY + '/data/sequences_s' + str(i + 1) + '.txt'
@@ -297,8 +295,10 @@ if __name__ == '__main__':
             pre = np.array(y_pred_prob)
 
             label = y_test
-            exact_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=True, APPROX=False)
-            approx_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=True, APPROX=True)
+            exact_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=False, APPROX=False)
+            approx_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=False, APPROX=True)
+            data_approx.append(approx_stat_df.copy())
+            data_exact.append(exact_stat_df.copy())
 
             t1 = time.perf_counter()
             print('Station - DPPA-AUC protocol - Step I')
@@ -350,9 +350,9 @@ if __name__ == '__main__':
 
         print('Station - DPPE-AUC & DPPA-AUC protocol - Step II')
 
-        auc_gt_approx, per['approx'] = calculate_regular_auc(stations, per['approx'], DATA_STORAGE_PATH, save=True, data=data, APPROX=True)
+        auc_gt_approx, per['approx'] = calculate_regular_auc(stations, per['approx'], DATA_STORAGE_PATH, save=False, data=data_approx, APPROX=True)
         print('Approx GT-AUC: ', auc_gt_approx)
-        auc_gt_exact, per['exact'] = calculate_regular_auc(stations, per['exact'], DATA_STORAGE_PATH, save=True, data=data, APPROX=False)
+        auc_gt_exact, per['exact'] = calculate_regular_auc(stations, per['exact'], DATA_STORAGE_PATH, save=False, data=data_exact, APPROX=False)
         print('Exact GT-AUC: ', auc_gt_exact)
 
         t5 = time.perf_counter()
