@@ -12,22 +12,17 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric import padding
 
 
-def create_synthetic_data_dppa(num_stations=int, samples=int, save=None):  # edited
+def create_synthetic_data_dppa(num_stations=int, df=None, save=None):  # edited
     """
     Create and save synthetic data of given number of samples and number of stations. Including flag patients
     """
-    samples_each = (samples // num_stations)
-
-    left_over = samples % num_stations
     dfs = []
 
     for station_i in range(num_stations):
-        if station_i == range(num_stations)[-1]:  # add left number over at last stations
-            samples_each = samples_each + left_over
 
         real_data = {
-            "Pre": np.random.random(size=samples_each),
-            "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
+            "Pre": df[station_i].Pre,
+            "Label": df[station_i].Label,
         }
         df_real = pd.DataFrame(real_data, columns=['Pre', 'Label'])
 
