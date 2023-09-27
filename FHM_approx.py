@@ -22,13 +22,15 @@ def create_synthetic_data_dppa(num_stations=int, df=None, save=None):  # edited
         real = df[station_i][df[station_i]['Flag'] == 1]
         real_data = {
             "Pre": real.Pre,
-            "Label": real.Label,
-
+            "Label": real.Label
         }
-        df_real = pd.DataFrame(real_data, columns=['Pre', 'Label'])
 
-        df_real.sort_values('Pre', ascending=False, inplace=True)
+        df_r = pd.DataFrame(real_data, columns=['Pre', 'Label'])
 
+        df_r.sort_values('Pre', ascending=False, inplace=True)
+        #df_real = pd.DataFrame(np.repeat(df_r.values, 2, axis=0))
+        df_real = df_r.loc[np.repeat(df_r.index, 2)].reset_index(drop=True)
+        #df_real.columns = df_r.columns
         # tmp_val = list(df_real['Pre'].sort_values(ascending=False))
 
         if save:

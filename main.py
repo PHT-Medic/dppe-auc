@@ -467,7 +467,7 @@ def dppe_auc_protocol(local_df, prev_results, directory=str, station=int, max_va
     agg_pk = prev_results['aggregator_paillier_pk']
     symmetric_key = Fernet.generate_key()  # represents k1 k_n
     if station == 1:
-        r1 = randint(1, max_value)
+        r1 = randint(20000, max_value)
         print("rand r_1 {}".format(r1))
         enc_table = encrypt_table(local_df, agg_pk, r1, symmetric_key)
         if save_data:  # Save for transparency the table - not required
@@ -663,18 +663,26 @@ def pp_auc_station_final(directory, train_results, save_keys, keys, APPROX):
 
 
 def plot_experiment_1(res):
-    total_time = [sum(x) for x in zip(*[res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2']])]
-    df = pd.DataFrame(list(zip(res['time']['stations_1'], res['time']['proxy'],
-                               res['time']['stations_2'], total_time, res['samples'], res['stations'])),
-                      index=res['stations'],
-                      columns=['Station_1', 'Proxy', 'Station_2', 'Total', 'Samples', 'Stations'])
 
-    df['Station_2'] = df['Station_2'].multiply(df['Stations'])  # multiply last step by number of stations
-    b_plot = df.boxplot(column='Total', by='Stations', grid=False)
-    plt.title(str(len(df['Station_2'])) + ' runs with ' + str(res['samples'][0]) + ' subjects')
-    plt.suptitle('')  # remove prev title
-    b_plot.set_ylabel('time (sec)')
-    b_plot.plot()
+    options = ['approx', 'exact']
+
+    for i in range(len(options)):
+        res_part = res[options[i]]
+
+        total_time = [sum(x) for x in zip(*[res_part['time']['total_step_1'], res_part['time']['proxy'], res_part['time']['stations_2']])]
+        df = pd.DataFrame(list(zip(res_part['time']['stations_1'], res_part['time']['proxy'],
+                                   res_part['time']['stations_2'], total_time, res_part['samples'], res_part['stations'])),
+                          index=res_part['stations'],
+                          columns=['Station_1', 'Proxy', 'Station_2', 'Total', 'Samples', 'Stations'])
+
+        df['Station_2'] = df['Station_2'].multiply(df['Stations'])  # multiply last step by number of stations
+        b_plot = df.boxplot(column='Total', by='Stations', grid=False)
+        plt.suptitle('')  # remove prev title
+        b_plot.set_ylabel('time (sec)')
+        plt.title('Option ' + options[i] + ' ' + str(len(df['Station_2'])) + ' runs with ' + str(res_part['samples'][0]) + ' subjects')
+
+        b_plot.plot()
+
     plt.tight_layout()
     plt.show()
     # plt.savefig('plots/exp1.png')
@@ -762,7 +770,9 @@ if __name__ == "__main__":
                      'gt-auc': [],
                      'diff': []
                      }}
-
+    #per = {'approx': {'time': {'stations_1': [0.1984941113333356, 0.19385406900000626, 0.1914984443333386, 0.19211002766667207, 0.1999794306666066, 0.19325626366662618, 0.19136655533335065, 0.19200273599994944, 0.19133688866660728, 0.1913567776666696], 'proxy': [16.345045499999998, 16.33334658299998, 16.25011374999997, 16.21170812500003, 16.234686874999966, 16.238068999999996, 16.239693583000076, 16.289057875000026, 16.22380308300012, 16.239371458999813], 'stations_2': [24.382013498999953, 23.87916787500012, 23.91782737500006, 23.869032749999747, 23.901585501, 23.823067499999752, 23.837265249000325, 23.84140862700019, 23.894918877000237, 23.935468248000006], 'total_step_1': [0.5954823340000068, 0.5815622070000188, 0.5744953330000158, 0.5763300830000162, 0.5999382919998197, 0.5797687909998785, 0.5740996660000519, 0.5760082079998483, 0.5740106659998219, 0.5740703330000088]}, 'total_times': [40.92555311033328, 40.406368527000105, 40.35943956933337, 40.27285090266645, 40.336251806666574, 40.254392763666374, 40.26832538733375, 40.32246923800017, 40.31005884866696, 40.36619648466649], 'samples': [1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500], 'flags': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 'stations': [3, 3, 3, 3, 3, 3, 3, 3, 3, 3], 'pp-auc': [0.49298379261614556, 0.4991126056699827, 0.49842925714285713, 0.4925396801982535, 0.5044916804342695, 0.5144220819536424, 0.5072134144981827, 0.4932730086915109, 0.5123831189934538, 0.5092118028310619], 'gt-auc': [0.49300771359594886, 0.4990229321376862, 0.49845485714285714, 0.4924843639367477, 0.5045101191881047, 0.5144424077578051, 0.5071688184270966, 0.49339579116561494, 0.5123404057755699, 0.5091802682663965], 'diff': [2.3920979803304654e-05, -8.9673532296497e-05, 2.56000000000145e-05, -5.5316261505788944e-05, 1.8438753835225974e-05, 2.0325804162779626e-05, -4.459607108608932e-05, 0.00012278247410402177, -4.271321788384963e-05, -3.153456466542526e-05]}, 'exact': {'time': {'stations_1': [0.2916688750000003, 0.28950843033333246, 0.2893862363333142, 0.2858041669999996, 0.29640830533332974, 0.2875637223333645, 0.28670026400004645, 0.2869573473332518, 0.28676723599998394, 0.2869977223333535], 'proxy': [62.774634999999996, 62.087768082999986, 61.53447670899999, 61.400370167000005, 61.27620329199999, 61.401696124999944, 61.49382404200003, 61.60768912499998, 61.36197766700002, 61.41187754199996], 'stations_2': [91.46530937400003, 88.86134525100002, 88.28130950099995, 88.0645286250001, 88.23527137500002, 88.16915687400001, 88.13623899899994, 88.29429312299999, 88.23463137599992, 88.40376862500034], 'total_step_1': [0.875006625000001, 0.8685252909999974, 0.8681587089999425, 0.8574125009999989, 0.8892249159999892, 0.8626911670000936, 0.8601007920001393, 0.8608720419997553, 0.8603017079999518, 0.8609931670000606]}, 'total_times': [154.53161324900003, 151.23862176433335, 150.10517244633326, 149.7507029590001, 149.80788297233335, 149.85841672133333, 149.91676330500002, 150.1889395953332, 149.88337627899992, 150.10264388933365], 'samples': [1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500], 'flags': [1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500], 'stations': [3, 3, 3, 3, 3, 3, 3, 3, 3, 3], 'pp-auc': [0.4775030785260964, 0.4972908572908573, 0.494592, 0.47639455151964416, 0.5141655856189771, 0.5443164292842239, 0.5208171458171458, 0.48102334929866575, 0.5360260233125508, 0.5270907916488762], 'gt-auc': [0.47750307852609647, 0.4972908572908573, 0.494592, 0.47639455151964416, 0.5141655856189771, 0.5443164292842239, 0.5208171458171458, 0.48102334929866575, 0.5360260233125508, 0.5270907916488763], 'diff': [5.551115123125783e-17, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.1102230246251565e-16]}}
+    #plot_experiment_1(per)
+    #exit(0)
     decision_points = np.linspace(0, 1, num=no_of_decision_points)[::-1]
     differences_approx, differences_exact = [], []
     data_approx, data_exact = [], []
@@ -913,12 +923,12 @@ if __name__ == "__main__":
                 total_time_exact = per['exact']["time"]["proxy"][-1] + per['exact']["time"]["stations_2"][-1] + \
                                    per['exact']["time"]["stations_1"][-1]
                 per['exact']['total_times'].append(total_time_exact)
-                print(f'Final total exec time: {total_time_exact:0.4f} seconds')
+                print(f'Exact final total exec time: {total_time_exact:0.4f} seconds')
 
                 total_time_approx = per['approx']["time"]["proxy"][-1] + per['approx']["time"]["stations_2"][-1] + \
                                     per['approx']["time"]["stations_1"][-1]
                 per['approx']['total_times'].append(total_time_approx)
-                print(f'Final total exec time: {total_time_approx:0.4f} seconds')
+                print(f'Approx final total exec time: {total_time_approx:0.4f} seconds')
 
                 per['approx']['pp-auc'].append(auc_pp_approx)
                 per['exact']['pp-auc'].append(auc_pp_exact)
