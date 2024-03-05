@@ -273,11 +273,11 @@ if __name__ == '__main__':
 
     decision_points = np.linspace(0, 1, num=no_of_decision_points)[::-1]
 
-    MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
-    RESULT_PATH = '/opt/pht_results/results.pkl'
+    #MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
+    #RESULT_PATH = '/opt/pht_results/results.pkl'
 
-    #MODEL_PATH = DIRECTORY + '/model.pkl' # if local
-    #RESULT_PATH = DIRECTORY + '/results.pkl'
+    MODEL_PATH = DIRECTORY + '/model.pkl' # if local
+    RESULT_PATH = DIRECTORY + '/results.pkl'
 
     train = Train(model=MODEL_PATH, results=RESULT_PATH)
 
@@ -293,7 +293,8 @@ if __name__ == '__main__':
     print('Station: {}'.format(stations))
 
     results['station'] = stations  # save new value
-    # results['proxy'] = True  # TODO remove in prod
+    results['proxy'] = True  # TODO remove in prod
+
     if not results['initial']:
         print('Station Init - Create and encrypt keys')
 
@@ -315,7 +316,8 @@ if __name__ == '__main__':
     elif not results['proxy']:
         # Station part I: load data, train model, save model, save data
 
-        filename = '/opt/pht_train/sequences_s' + str(stations) + '.txt'
+        #filename = '/opt/pht_train/sequences_s' + str(stations) + '.txt'
+        filename = DIRECTORY + '/sequences_s' + str(stations) + '.txt'
         data = defaultdict(list)
         model = train.load_model()
 

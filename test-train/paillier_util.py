@@ -132,6 +132,72 @@ def getprimeover(N):
         return n
 
 
+def miller_rabin(n, k):
+    """Run the Miller-Rabin test on n with at most k iterations
+
+    Arguments:
+        n (int): number whose primality is to be tested
+        k (int): maximum number of iterations to run
+
+    Returns:
+        bool: If n is prime, then True is returned. Otherwise, False is
+        returned, except with probability less than 4**-k.
+
+    See <https://en.wikipedia.org/wiki/Miller%E2%80%93Rabin_primality_test>
+    """
+    assert n > 3
+
+    # find r and d such that n-1 = 2^r × d
+    d = n-1
+    r = 0
+    while d % 2 == 0:
+        d //= 2
+        r += 1
+    assert n-1 == d * 2**r
+    assert d % 2 == 1
+
+    for _ in range(k):  # each iteration divides risk of false prime by 4
+        a = random.randint(2, n-2)  # choose a random witness
+
+        x = pow(a, d, n)
+        if x == 1 or x == n-1:
+            continue  # go to next witness
+
+        for _ in range(1, r):
+            x = x*x % n
+            if x == n-1:
+                break   # go to next witness
+        else:
+            return False
+    return True
+
+
+def is_prime(n, mr_rounds=25):
+    """Test whether n is probably prime
+
+    See <https://en.wikipedia.org/wiki/Primality_test#Probabilistic_tests>
+
+    Arguments:
+        n (int): the number to be tested
+        mr_rounds (int, optional): number of Miller-Rabin iterations to run;
+            defaults to 25 iterations, which is what the GMP library uses
+
+    Returns:
+        bool: when this function returns False, `n` is composite (not prime);
+        when it returns True, `n` is prime with overwhelming probability
+    """
+    # as an optimization we quickly detect small primes using the list above
+    if n <= first_primes[-1]:
+        return n in first_primes
+    # for small dividors (relatively frequent), euclidean division is best
+    for p in first_primes:
+        if n % p == 0:
+            return False
+    # the actual generic test; give a false prime with probability 2⁻⁵⁰
+    return miller_rabin(n, mr_rounds)
+
+
+
 def isqrt(N):
     """ returns the integer square root of N """
     if HAVE_GMP:
