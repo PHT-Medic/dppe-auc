@@ -347,7 +347,7 @@ def dppe_auc_proxy(results, max_value):
 
     df_new_index = sort_df.reset_index()
     print("len_df: ", len(df_new_index))
-    plot_input_data(df_new_index, None, None, None, None, proxy=True)
+    #plot_input_data(df_new_index, None, None, None, None, proxy=True)
     M = len(df_new_index)
     tp_values = []
     fp_values = []

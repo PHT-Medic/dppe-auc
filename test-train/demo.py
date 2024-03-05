@@ -293,7 +293,6 @@ if __name__ == '__main__':
     print('Station: {}'.format(stations))
 
     results['station'] = stations  # save new value
-    results['proxy'] = True  # TODO remove in prod
 
     if not results['initial']:
         print('Station Init - Create and encrypt keys')
