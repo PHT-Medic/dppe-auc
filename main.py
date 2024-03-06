@@ -431,8 +431,10 @@ def encrypt_symmetric_key(symmetric_key, directory, save, results):
     Encrypt symmetric key_station with public rsa key of aggregator
     return: encrypted_symmetric_key
     """
+
     path = directory + '/keys/agg_rsa_public_key.pem'
     rsa_agg_pk = load_rsa_pk(path, save, results)
+    #rsa_agg_pk = agg_pk
     encrypted_symmetric_key = rsa_agg_pk.encrypt(symmetric_key, padding.OAEP(
         mgf=padding.MGF1(algorithm=hashes.SHA256()),
         algorithm=hashes.SHA256(),
@@ -733,9 +735,9 @@ if __name__ == "__main__":
 
     if EXPERIMENT_1:
         # Experiment 1
-        station_list = [3]
-        subject_list = [1500]
-        loops = 100
+        station_list = [3,6]
+        subject_list = [150]
+        loops = 2
     elif EXPERIMENT_2:
         # Experiment 2
         station_list = [3]

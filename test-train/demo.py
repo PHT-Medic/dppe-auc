@@ -339,7 +339,7 @@ if __name__ == '__main__':
                     if feature_len != N:
                         raise ValueError
                 data[label].append(item)
-        print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
+        # print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
         data = {'CXCR4': data['CXCR4'],
                 'CCR5': data['CCR5']}
 
@@ -361,14 +361,13 @@ if __name__ == '__main__':
         x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, random_state=1, shuffle=True)
         print('Hold out test size for comparison: {}'.format(Counter(y_test)))
 
-        if model is None:
-            model = GradientBoostingClassifier()
+        #if model is None:
+        #    model = GradientBoostingClassifier()
 
-        classes = np.array([0, 1])
-        model.fit(x_train, y_train)
+        #classes = np.array([0, 1])
+        #model.fit(x_train, y_train)
 
-
-        #### START DPPE Protocol
+        # START DPPE Protocol
         y_pred_prob = model.predict_proba(x_test)[:, -1]
         pre = np.array(y_pred_prob)
 
