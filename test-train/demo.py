@@ -6,7 +6,6 @@ import json
 from collections import Counter
 from FHM_approx import *
 
-
 d = {
     'A': [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     'R': [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -134,10 +133,10 @@ class Train:
         try:
             with open(self.encoded_model, "rb") as model_file:
                 model = pickle.load(model_file)
-            print("Loading previous results")
+            print("Loading previous model")
             return model
         except Exception:
-            print("No previous data")
+            print("No previous model")
             return None
 
 
@@ -161,23 +160,24 @@ def data_generation(pre, label, data_path, station, run, save, APPROX):
         # tmp_val = list(df_real['Pre'].sort_values(ascending=False))
         # values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]  # unique values
         # counts = list(df_real['Pre'].value_counts(ascending=False))
-        # max_a = counts[0] + int(counts[0] * 0.1)
-        # v = [max_a - counts[i] for i in range(len(counts))]  # probabilities
+        # highest = counts[0] + int(counts[0] * 0.1)
+        # v = [highest - counts[x] for x in range(len(counts))]  # probabilities
+        # if sum(v) == 0:
+        #     v = [x + 1 for x in v]
         # s = pd.Series(np.repeat(values[i], v[i]) for i in range(len(v)))
         # list_fakes = s.explode(ignore_index=True)
         # fakes = len(list_fakes)
         tmp_val = list(df_real['Pre'].sort_values(ascending=False))
         values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]  # unique values
-        counts = list(df_real['Pre'].value_counts(ascending=False))
-        highest = counts[0] + int(counts[0] * 0.1)
-        v = [highest - counts[x] for x in range(len(counts))]  # probabilities
-        if sum(v) == 0:
-            v = [x + 1 for x in v]
+        counts = list(df_real['Pre'].value_counts(normalize=True, ascending=False))
+        max_a = counts[0] + int(counts[0] * 0.1)
+        v = [max_a - counts[i] for i in range(len(counts))]  # probabilities
         s = pd.Series(np.repeat(values[i], v[i]) for i in range(len(v)))
         list_fakes = s.explode(ignore_index=True)
         fakes = len(list_fakes)
 
-        fake_data = {"Pre": list_fakes,
+        fake_data = {"Pre": random.choices(values, weights=v, k=fakes),
+                     # "Pre": list_fakes,
                      "Label": np.random.choice([0], size=fakes),
                      "Flag": np.random.choice([0], size=fakes)
                      }
@@ -186,7 +186,7 @@ def data_generation(pre, label, data_path, station, run, save, APPROX):
         df = [df_real, df_fake]
         merged = pd.concat(df, axis=0)
         df = merged.sample(frac=1).reset_index(drop=True)
-        #plot_input_data(df, df_real, df_fake, station, run, proxy=False)
+        plot_input_data(df, df_real, df_fake, station, run, proxy=False)
 
         df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
         print("Size complete: {}".format(len(df)))
@@ -219,7 +219,7 @@ def initial_station(results):
 
         enc_sk = {'n': Fernet(env_symm_key).encrypt(bytes(str(sk.n), 'utf-8')),
                   'x': Fernet(env_symm_key).encrypt(bytes(str(sk.x), 'utf-8'))
-                }
+                  }
         results['enc_s_p_sks'].append(enc_sk)
         results['stations_paillier_pk'][i] = pk
 
@@ -257,13 +257,13 @@ def initial_station(results):
     return results
 
 
-if __name__ == '__main__':
+def execution_simulation():
     DIRECTORY = os.getcwd()
 
     #  print("Comparing both approaches in same run")
     MAX = 100000
     no_of_decision_points = 200
-    print(os.getcwd())
+    # print(os.getcwd())
     approx_auc_diff, exact_auc_diff = [], []
     approx_total_times, exact_total_times = [], []
     total_repetitions = 1  # 10 before
@@ -273,17 +273,17 @@ if __name__ == '__main__':
 
     decision_points = np.linspace(0, 1, num=no_of_decision_points)[::-1]
 
-    #MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
-    #RESULT_PATH = '/opt/pht_results/results.pkl'
+    # MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
+    # RESULT_PATH = '/opt/pht_results/results.pkl'
 
-    MODEL_PATH = DIRECTORY + '/model.pkl' # if local
+    MODEL_PATH = '/Users/marius/ukt/GitHub/pp-auc/test-train/model.pkl'  # if local
     RESULT_PATH = DIRECTORY + '/results.pkl'
-
+    # print(MODEL_PATH)
     train = Train(model=MODEL_PATH, results=RESULT_PATH)
 
     # Init station: create keys, save init
     results = train.load_results()
-    #print(results)
+    # print(results)
     times = results['times']
     per = results['per']
     data_exact = results['data_exact']
@@ -311,11 +311,11 @@ if __name__ == '__main__':
         results['times'] = times
         train.save_results(results)
         print('Keys saved')
-        exit(0)
+        # exit(0)
     elif not results['proxy']:
         # Station part I: load data, train model, save model, save data
 
-        #filename = '/opt/pht_train/sequences_s' + str(stations) + '.txt'
+        filename = '/opt/pht_train/sequences_s' + str(stations) + '.txt'
         filename = DIRECTORY + '/sequences_s' + str(stations) + '.txt'
         data = defaultdict(list)
         model = train.load_model()
@@ -361,11 +361,11 @@ if __name__ == '__main__':
         x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, random_state=1, shuffle=True)
         print('Hold out test size for comparison: {}'.format(Counter(y_test)))
 
-        #if model is None:
+        # if model is None:
         #    model = GradientBoostingClassifier()
 
-        #classes = np.array([0, 1])
-        #model.fit(x_train, y_train)
+        # classes = np.array([0, 1])
+        # model.fit(x_train, y_train)
 
         # START DPPE Protocol
         y_pred_prob = model.predict_proba(x_test)[:, -1]
@@ -417,8 +417,8 @@ if __name__ == '__main__':
         #  Proxy Computation
         print('Starting proxy protocol')
 
-        #times['approx']['s_1_total'].append(total_s1_approx)
-        #times['exact']['s_1_total'].append(total_s1_exact)
+        # times['approx']['s_1_total'].append(total_s1_approx)
+        # times['exact']['s_1_total'].append(total_s1_exact)
         t3 = time.perf_counter()
         results['approx'] = dppa_auc_proxy(results["approx"], max_value=MAX, no_dps=no_of_decision_points)
         t4 = time.perf_counter()
@@ -435,3 +435,90 @@ if __name__ == '__main__':
         train.save_results(results)
 
     # Final: User has locally to run last step
+
+
+def user_part(res_path, sk_path, sk_pw):
+    DIRECTORY = os.getcwd()
+    #  print("Comparing both approaches in same run")
+    MAX = 100000
+    no_of_decision_points = 200
+    os.environ["RESULT_PATH"] = res_path
+    os.environ["PRIVATE_KEY_PATH"] = sk_path
+    os.environ["PRIVATE_KEY_PASS"] = sk_pw
+
+    approx_auc_diff, exact_auc_diff = [], []
+    approx_total_times, exact_total_times = [], []
+    total_repetitions = 1  # 10 before
+
+    best_time = 100
+    best_diff = 10
+
+    decision_points = np.linspace(0, 1, num=no_of_decision_points)[::-1]
+
+    MODEL_PATH = DIRECTORY + '/pht_results/model.pkl'
+
+    train = Train(model=MODEL_PATH, results=os.getenv("RESULT_PATH"))
+
+    results = train.load_results()
+
+    times = results['times']
+    per = results['per']
+    data_approx = results['data_approx']
+    data_exact = results['data_exact']
+    stations = len(times["approx"]['station_1'])
+    print('Station - DPPE-AUC & DPPA-AUC protocol - Step II')
+
+    auc_gt_approx, per['approx'] = calculate_regular_auc(1, per['approx'], data=data_approx, APPROX=True)
+    print('Approx GT-AUC: ', auc_gt_approx)
+    auc_gt_exact, per['exact'] = calculate_regular_auc(1, per['exact'], data=data_exact, APPROX=False)
+    print('Exact GT-AUC: ', auc_gt_exact)
+
+    t1 = time.perf_counter()
+    auc_pp_exact = pp_auc_station_final(results["exact"], APPROX=False)
+    t2 = time.perf_counter()
+    times['approx']['station_2'].append(t2 - t1)
+    total_time_approx = times["approx"]['s_1_total'][-1] + times["approx"]['proxy'][-1] + (
+            times["approx"]['station_2'][-1] * stations)
+    print(f'Approx execution time by station - Step II {times["approx"]["station_2"][-1]:0.4f} seconds')
+    print('Approx total time {}'.format(total_time_approx))
+
+    t5 = time.perf_counter()
+    auc_pp_approx = pp_auc_station_final(results["approx"], APPROX=True)
+    t6 = time.perf_counter()
+    times['exact']['station_2'].append(t6 - t5)
+    print('\n')
+    total_time_exact = times["exact"]['s_1_total'][-1] + times["exact"]['proxy'][-1] + (
+            times["exact"]['station_2'][-1] * len(times["approx"]['station_1']))
+    print(f'Exact execution time by User - Step II {times["exact"]["station_2"][-1]:0.4f} seconds')
+    print('Exact total time {}'.format(total_time_exact))
+    per['exact']['total_time'].append(total_time_exact)
+    exact_total_times.append(total_time_exact)
+
+    diff_exact = auc_gt_exact - auc_pp_exact
+    exact_auc_diff.append(diff_exact)
+    print('\n')
+
+    exact_avg_diff = sum(exact_auc_diff) / len(exact_auc_diff)
+    print('Exact average differences over {} runs with by {} and all {}'.format(len(exact_auc_diff),
+                                                                                exact_avg_diff, exact_auc_diff))
+    diff_approx = auc_gt_approx - auc_pp_approx
+    approx_auc_diff.append(diff_approx)
+
+    approx_avg_diff = sum(approx_auc_diff) / len(approx_auc_diff)
+    print('Approx average differences over {} runs with by {} and all {}'.format(len(approx_auc_diff),
+                                                                                 approx_avg_diff, approx_auc_diff))
+    # exact_avg_time = sum(exact_total_times) / len(exact_total_times)
+    # print('Exact average time total {} and each runtime {}'.format(exact_avg_time, exact_total_times))
+
+
+if __name__ == '__main__':
+
+    for i in range(5):
+        execution_simulation()
+        print('\n')
+
+    res_path = 'Path/test-train/results.pkl'
+    sk_path = "Path/demo.pem"
+    sk_pw = "PW"
+
+    user_part(res_path, sk_path, sk_pw)

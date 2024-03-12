@@ -46,6 +46,7 @@ def encrypt_table_dppa(station_df, agg_pk, r1, symmetric_key):  # edited
     """
     Encrypt dataframe of given station dataframe with paillier public key of aggregator and random values
     """
+    print("Size of station_df: ", len(station_df))
 
     station_df["tp"] = station_df["tp"].apply(lambda x: encrypt(agg_pk, x))
     station_df["fp"] = station_df["fp"].apply(lambda x: encrypt(agg_pk, x))
@@ -126,7 +127,7 @@ def dppa_auc_protocol(station_df, dps, prev_results, directory=str, station=int,
     if station == 1:
         r1 = randint(1, max_value)  # delete later
 
-        enc_table = encrypt_table_dppa(my_data, agg_pk, r1, symmetric_key) # todo might remove
+        enc_table = encrypt_table_dppa(my_data, agg_pk, r1, symmetric_key)
 
         enc_symmetric_key = encrypt_symmetric_key(symmetric_key, prev_results)
         prev_results['encrypted_ks'].append(enc_symmetric_key)
@@ -194,7 +195,7 @@ def dppa_auc_proxy(results, max_value, no_dps=int):  # edited
             backend=default_backend()
         )
 
-    enc_symm_key = results['enc_symm_key'][-2] # todo index second last one in production
+    enc_symm_key = results['enc_symm_key'][-2]  # todo index second last one in production
     env_symm_key = agg_rsa_sk.decrypt(
              enc_symm_key,
              padding.OAEP(

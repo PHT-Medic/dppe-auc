@@ -21,6 +21,37 @@ from FHM_approx import dppa_auc_protocol, dppa_auc_proxy, create_synthetic_data_
 from paillier import *
 
 
+def plot_input_data(df, df_real, df_fake, station, run, proxy=None):
+    if proxy:
+        plt.clf()
+        plt.style.use('ggplot')
+        plt.title('Run ' + str(run) + ' Data distribution at proxy')
+        plt.hist(df['Dec_pre'], edgecolor='black', bins=40, color='orange', rwidth=0.6,
+                 alpha=0.5, label='Obscured')
+        plt.legend(loc='upper left')
+        plt.yscale('log')
+        plt.xlabel('Obscured prediction value')
+        plt.ylabel('Subjects')
+        plt.tight_layout()
+        plt.show()
+        # plt.savefig('plots/proxy.png')
+    else:
+        d = {'Combined': df['Pre'], "Real": df_real['Pre'], "Flag": df_fake['Pre']}
+        df_p = pd.DataFrame(d)
+        plt.clf()
+        plt.style.use('ggplot')
+        plt.title('Run ' + str(run) + ' Data distribution of station {}'.format(station + 1))
+        plt.hist([df_p['Real'], df_p['Flag']], edgecolor='black', bins=40, color=['green', 'red'], stacked=True,
+                 rwidth=0.6,
+                 alpha=0.5, label=['Real', 'Flag'])
+        plt.legend(loc='upper left')
+        plt.yscale('log')
+        plt.xlabel('Prediction Values')
+        plt.ylabel('Subjects')
+
+        plt.tight_layout()
+        plt.show()
+
 def return_df(df):
     return pd.DataFrame(df, columns=['Pre', 'Label', 'Flag'])
 
@@ -265,7 +296,7 @@ def dppe_auc_protocol(local_df, prev_results, directory=str, station=int, max_va
     symmetric_key = Fernet.generate_key()  # represents k1 k_n
     if station == 1:
         r1 = randint(20000, max_value)
-        print("rand r_1 {}".format(r1))
+        #print("rand r_1 {}".format(r1))
         enc_table = encrypt_table(local_df, agg_pk, r1, symmetric_key)
         if save_data:  # Save for transparency the table - not required
             enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
@@ -363,8 +394,8 @@ def dppe_auc_proxy(results, max_value):
 
     a = randint(1, max_value)
     b = randint(1, max_value)
-    print("rand a {}".format(a))
-    print("rand b {}".format(b))
+    #print("rand a {}".format(a))
+    #print("rand b {}".format(b))
     # Denominator
     # TP_A is summation of labels (TP)
     tp_a_mul = mul_const(agg_pk, tp_values[-1], a)
@@ -372,8 +403,8 @@ def dppe_auc_proxy(results, max_value):
 
     r_1A = randint(1, max_value)
     r_2A = randint(1, max_value)
-    print("rand r_1A {}".format(r_1A))
-    print("rand r_2A {}".format(r_2A))
+    #print("rand r_1A {}".format(r_1A))
+    #print("rand r_2A {}".format(r_2A))
     D1 = add_const(agg_pk, tp_a_mul, r_1A)
     D2 = add_const(agg_pk, fp_a_mul, r_2A)
     D3_1 = mul_const(agg_pk, tp_a_mul, r_2A)
