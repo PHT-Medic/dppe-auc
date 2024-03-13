@@ -195,10 +195,10 @@ def data_generation(pre, label, data_path, station, run, save, APPROX):
         return df
 
 
-def initial_station(results):
+def initial_station(results, conf_path):
     # print(os.getenv("PRIVATE_KEY_PATH"))
     # Get users, and all stations PK
-    with open(os.getenv("CONF_PATH"), 'r') as f:
+    with open(conf_path, 'r') as f:
         trainConfig = json.load(f)
 
     rsa_pks = []
@@ -257,7 +257,7 @@ def initial_station(results):
     return results
 
 
-def execution_simulation():
+def execution_simulation(conf_path, sk_path):
     DIRECTORY = os.getcwd()
 
     #  print("Comparing both approaches in same run")
@@ -298,12 +298,12 @@ def execution_simulation():
         print('Station Init - Create and encrypt keys')
 
         t0 = time.perf_counter()
-        results['approx'] = initial_station(results['approx'])
+        results['approx'] = initial_station(results['approx'], conf_path)
         t1 = time.perf_counter()
         times['approx']["init"].append(t1 - t0)
         print(f'Key creation approximation method time {sum(times["approx"]["init"]):0.4f} seconds')
         t0 = time.perf_counter()
-        results['exact'] = initial_station(results['exact'])
+        results['exact'] = initial_station(results['exact'], conf_path)
         t1 = time.perf_counter()
         times['exact']["init"].append(t1 - t0)
         print(f'Key creation approximation method time {sum(times["exact"]["init"]):0.4f} seconds')
@@ -386,14 +386,14 @@ def execution_simulation():
         print('Station - DPPA-AUC protocol - Step I')
         t1 = time.perf_counter()
         results_approx = dppa_auc_protocol(approx_stat_df, decision_points, results["approx"],
-                                           station=int(stations), max_value=MAX)
+                                           station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
         t2 = time.perf_counter()
         times['approx']["station_1"].append(t2 - t1)
         print(f'Approx execution time by station {times["approx"]["station_1"][-1]:0.4f} seconds')
 
         print('Station - DPPE-AUC protocol - Step I')
         t1 = time.perf_counter()
-        results_exact = dppe_auc_protocol(exact_stat_df, results["exact"], station=int(stations), max_value=MAX)
+        results_exact = dppe_auc_protocol(exact_stat_df, results["exact"], station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
         t2 = time.perf_counter()
         times['exact']["station_1"].append(t2 - t1)
         print(f'Exact execution time by station {times["exact"]["station_1"][-1]:0.4f} seconds')
@@ -420,13 +420,13 @@ def execution_simulation():
         # times['approx']['s_1_total'].append(total_s1_approx)
         # times['exact']['s_1_total'].append(total_s1_exact)
         t3 = time.perf_counter()
-        results['approx'] = dppa_auc_proxy(results["approx"], max_value=MAX, no_dps=no_of_decision_points)
+        results['approx'] = dppa_auc_proxy(results["approx"], max_value=MAX, no_dps=no_of_decision_points, sk_path=sk_path)
         t4 = time.perf_counter()
         times["approx"]['proxy'].append(t4 - t3)
         print(f'Approx execution time by proxy station {times["approx"]["proxy"][-1]:0.4f} seconds')
 
         t3 = time.perf_counter()
-        results['exact'] = dppe_auc_proxy(results["exact"], max_value=MAX)
+        results['exact'] = dppe_auc_proxy(results["exact"], max_value=MAX, sk_path=sk_path)
         t4 = time.perf_counter()
         times["exact"]['proxy'].append(t4 - t3)
         print(f'Exact execution time by proxy station {times["exact"]["proxy"][-1]:0.4f} seconds')
@@ -442,9 +442,9 @@ def user_part(res_path, sk_path, sk_pw):
     #  print("Comparing both approaches in same run")
     MAX = 100000
     no_of_decision_points = 200
-    os.environ["RESULT_PATH"] = res_path
-    os.environ["PRIVATE_KEY_PATH"] = sk_path
-    os.environ["PRIVATE_KEY_PASS"] = sk_pw
+    #os.environ["RESULT_PATH"] = res_path
+    #os.environ["PRIVATE_KEY_PATH"] = sk_path
+    #os.environ["PRIVATE_KEY_PASS"] = sk_pw
 
     approx_auc_diff, exact_auc_diff = [], []
     approx_total_times, exact_total_times = [], []
@@ -457,7 +457,7 @@ def user_part(res_path, sk_path, sk_pw):
 
     MODEL_PATH = DIRECTORY + '/pht_results/model.pkl'
 
-    train = Train(model=MODEL_PATH, results=os.getenv("RESULT_PATH"))
+    train = Train(model=MODEL_PATH, results=res_path)
 
     results = train.load_results()
 
@@ -474,7 +474,7 @@ def user_part(res_path, sk_path, sk_pw):
     print('Exact GT-AUC: ', auc_gt_exact)
 
     t1 = time.perf_counter()
-    auc_pp_exact = pp_auc_station_final(results["exact"], APPROX=False)
+    auc_pp_exact = pp_auc_station_final(results["exact"], sk_path, sk_pw, APPROX=True)
     t2 = time.perf_counter()
     times['approx']['station_2'].append(t2 - t1)
     total_time_approx = times["approx"]['s_1_total'][-1] + times["approx"]['proxy'][-1] + (
@@ -483,7 +483,7 @@ def user_part(res_path, sk_path, sk_pw):
     print('Approx total time {}'.format(total_time_approx))
 
     t5 = time.perf_counter()
-    auc_pp_approx = pp_auc_station_final(results["approx"], APPROX=True)
+    auc_pp_approx = pp_auc_station_final(results["approx"], sk_path, sk_pw, APPROX=True)
     t6 = time.perf_counter()
     times['exact']['station_2'].append(t6 - t5)
     print('\n')
@@ -513,12 +513,14 @@ def user_part(res_path, sk_path, sk_pw):
 
 if __name__ == '__main__':
 
-    for i in range(5):
-        execution_simulation()
-        print('\n')
+    res_path = '/Users/YOUR_PATH/dppe-auc/test-train/results.pkl'
+    sk_path = '/Users/YOUR_PATH/Downloads/demo.pem'
+    station_rsa_sk_path = '/Users/YOUR_PATH/dppe-auc/key.pem'
+    sk_pw = 'start123'
+    conf_path = '/Users/YOUR_PATH/dppe-auc/test-train/train_config.json'
 
-    res_path = 'Path/test-train/results.pkl'
-    sk_path = "Path/demo.pem"
-    sk_pw = "PW"
+    for i in range(5):
+        execution_simulation(conf_path, station_rsa_sk_path)
+        print('\n')
 
     user_part(res_path, sk_path, sk_pw)

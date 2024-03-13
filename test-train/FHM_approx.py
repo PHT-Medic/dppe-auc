@@ -82,7 +82,7 @@ def encrypt_symmetric_key(symmetric_key, results):
     return encrypted_symmetric_key
 
 
-def dppa_auc_protocol(station_df, dps, prev_results, directory=str, station=int, max_value=int, save_data=None, save_keys=None, keys=None):
+def dppa_auc_protocol(station_df, dps, prev_results, directory=str, station=int, max_value=int, save_data=None, save_keys=None, rsa_sk_path=None):
     """
     Perform PP-AUC protocol at specific station given dataframe
     """
@@ -141,7 +141,7 @@ def dppa_auc_protocol(station_df, dps, prev_results, directory=str, station=int,
 
         enc_symm_key = prev_results['enc_symm_key'][station - 1]
 
-        with open(os.getenv("PRIVATE_KEY_PATH"), "rb") as key_file:
+        with open(rsa_sk_path, "rb") as key_file:
             station_rsa_sk = serialization.load_pem_private_key(
                 key_file.read(),
                 password=None,
@@ -182,20 +182,20 @@ def z_values(n):
     return l + [-sum(l)]
 
 
-def dppa_auc_proxy(results, max_value, no_dps=int):  # edited
+def dppa_auc_proxy(results, max_value, no_dps=int, sk_path=None):  # edited
     """
     Simulation of aggregator service - globally computes privacy preserving AUC table as proxy station
     """
 
     agg_pk = results['aggregator_paillier_pk']
-    with open(os.getenv("PRIVATE_KEY_PATH"), "rb") as key_file:
+    with open(sk_path, "rb") as key_file:
         agg_rsa_sk = serialization.load_pem_private_key(
             key_file.read(),
             password=None,
             backend=default_backend()
         )
 
-    enc_symm_key = results['enc_symm_key'][-2]  # todo index second last one in production
+    enc_symm_key = results['enc_symm_key'][-2]
     env_symm_key = agg_rsa_sk.decrypt(
              enc_symm_key,
              padding.OAEP(

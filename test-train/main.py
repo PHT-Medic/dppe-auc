@@ -288,7 +288,7 @@ def symm_key_rsa_decrypt(ciphertext, path):
 
 
 def dppe_auc_protocol(local_df, prev_results, directory=str, station=int, max_value=int, save_data=None, save_keys=None,
-                      keys=None):
+                      keys=None, rsa_sk_path=None):
     """
     Perform PP-AUC protocol at specific station given dataframe
     """
@@ -316,7 +316,7 @@ def dppe_auc_protocol(local_df, prev_results, directory=str, station=int, max_va
         #    sk_s_i = keys['s_p_sks'][station - 1]
 
         enc_symm_key = prev_results['enc_symm_key'][0]
-        env_symm_key = symm_key_rsa_decrypt(enc_symm_key, os.getenv("PRIVATE_KEY_PATH"))
+        env_symm_key = symm_key_rsa_decrypt(enc_symm_key, rsa_sk_path)
 
         sk_s_i = prev_results['enc_s_p_sks'][station - 1]  # TODO verify if second station is correct positioned
         dec_sk = {'n': Fernet(env_symm_key).decrypt(sk_s_i['n']).decode(),
@@ -345,14 +345,14 @@ def z_values(n):
     return l + [-sum(l)]
 
 
-def dppe_auc_proxy(results, max_value):
+def dppe_auc_proxy(results, max_value, sk_path):
     """
     Simulation of aggregator service - globally computes privacy preserving AUC table as proxy station
     """
     agg_pk = results['aggregator_paillier_pk']
     enc_sk_1 = results['enc_agg_sk_1']
     enc_symm_key = results['enc_symm_key'][-2]  # todo index last one at end
-    env_symm_key = symm_key_rsa_decrypt(enc_symm_key, os.getenv("PRIVATE_KEY_PATH")) # TODO change path
+    env_symm_key = symm_key_rsa_decrypt(enc_symm_key,sk_path)
     dec_sk_1 = {'n': Fernet(env_symm_key).decrypt(enc_sk_1['n']).decode(),
                 'x1': Fernet(env_symm_key).decrypt(enc_sk_1['x1']).decode()
                 }
@@ -362,7 +362,7 @@ def dppe_auc_proxy(results, max_value):
     df_list = []
     for i in range(len(results['encrypted_ks'])):
         enc_k_i = results['encrypted_ks'][i]
-        dec_k_i = symm_key_rsa_decrypt(enc_k_i, os.getenv("PRIVATE_KEY_PATH")) #  TODO adapted
+        dec_k_i = symm_key_rsa_decrypt(enc_k_i, sk_path)
 
         # decrypt table values with Fernet and corresponding k_i symmetric key
         table_i = results['pp_auc_tables'][i]
@@ -462,7 +462,7 @@ def dppe_auc_proxy(results, max_value):
     return results
 
 
-def pp_auc_station_final(train_results, APPROX):
+def pp_auc_station_final(train_results, sk_path, sk_pw, APPROX):
     """
     Simulation of station delegated AUC parts to compute global DPPE-AUC locally
     """
@@ -473,10 +473,10 @@ def pp_auc_station_final(train_results, APPROX):
 
     enc_symm_key = train_results['enc_symm_key'][-1]
 
-    with open(os.getenv("PRIVATE_KEY_PATH"), "rb") as key_file: # todo change to train key later /opt/project in pycharm
+    with open(sk_path, "rb") as key_file:
         agg_rsa_sk = serialization.load_pem_private_key(
             key_file.read(),
-            password=os.getenv("PRIVATE_KEY_PASS").encode(),
+            password=sk_pw.encode(),
             backend=default_backend()
         )
     env_symm_key = agg_rsa_sk.decrypt(
@@ -493,7 +493,7 @@ def pp_auc_station_final(train_results, APPROX):
     dec_sk_2 = {'n': Fernet(env_symm_key).decrypt(enc_sk_2['n']).decode(),
                 'x2': Fernet(env_symm_key).decrypt(enc_sk_2['x2']).decode()
                 }
-    agg_sk_2 = PrivateKeyTwo(int(dec_sk_2['n']), int(dec_sk_2['x2']))  # todo decrypt with rsa private key
+    agg_sk_2 = PrivateKeyTwo(int(dec_sk_2['n']), int(dec_sk_2['x2']))
     agg_pk = train_results['aggregator_paillier_pk']
 
     # decrypt random components D1, D2, D3, Ni1, Ni2, Ni3
