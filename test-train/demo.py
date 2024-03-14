@@ -276,7 +276,7 @@ def execution_simulation(conf_path, sk_path):
     # MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
     # RESULT_PATH = '/opt/pht_results/results.pkl'
 
-    MODEL_PATH = '/Users/marius/ukt/GitHub/pp-auc/test-train/model.pkl'  # if local
+    MODEL_PATH = DIRECTORY + '/model.pkl'  # if local
     RESULT_PATH = DIRECTORY + '/results.pkl'
     # print(MODEL_PATH)
     train = Train(model=MODEL_PATH, results=RESULT_PATH)
@@ -442,9 +442,6 @@ def user_part(res_path, sk_path, sk_pw):
     #  print("Comparing both approaches in same run")
     MAX = 100000
     no_of_decision_points = 200
-    #os.environ["RESULT_PATH"] = res_path
-    #os.environ["PRIVATE_KEY_PATH"] = sk_path
-    #os.environ["PRIVATE_KEY_PASS"] = sk_pw
 
     approx_auc_diff, exact_auc_diff = [], []
     approx_total_times, exact_total_times = [], []
@@ -516,7 +513,7 @@ if __name__ == '__main__':
     res_path = '/Users/YOUR_PATH/dppe-auc/test-train/results.pkl'
     sk_path = '/Users/YOUR_PATH/Downloads/demo.pem'
     station_rsa_sk_path = '/Users/YOUR_PATH/dppe-auc/key.pem'
-    sk_pw = 'start123'
+    sk_pw = 'PW'
     conf_path = '/Users/YOUR_PATH/dppe-auc/test-train/train_config.json'
 
     for i in range(5):
