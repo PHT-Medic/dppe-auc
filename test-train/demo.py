@@ -512,11 +512,11 @@ def user_part(res_path, sk_path, sk_pw):
 
 if __name__ == '__main__':
 
-    res_path = '/Users/meteakgun/PycharmProjects/dppe-auc/test-train/results.pkl'
-    sk_path = '/Users/meteakgun/Downloads/demo.pem'
-    station_rsa_sk_path = '/Users/meteakgun/Downloads/key.pem'
-    sk_pw = 'start123'
-    conf_path = '/Users/meteakgun/PycharmProjects/dppe-auc/test-train/train_config.json'
+    res_path = '/Users/PATH/dppe-auc/test-train/results.pkl'
+    sk_path = '/Users/PATH/demo.pem'
+    station_rsa_sk_path = '/Users/PATH/key.pem'
+    sk_pw = 'PW'
+    conf_path = '/Users/PATH/dppe-auc/test-train/train_config.json'
 
     for i in range(5):
         execution_simulation(conf_path, station_rsa_sk_path)
