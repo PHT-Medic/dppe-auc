@@ -262,7 +262,7 @@ def execution_simulation(conf_path, sk_path):
 
     #  print("Comparing both approaches in same run")
     MAX = 100000
-    no_of_decision_points = 200
+    no_of_decision_points = 100
     # print(os.getcwd())
     approx_auc_diff, exact_auc_diff = [], []
     approx_total_times, exact_total_times = [], []
@@ -276,7 +276,7 @@ def execution_simulation(conf_path, sk_path):
     # MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
     # RESULT_PATH = '/opt/pht_results/results.pkl'
 
-    MODEL_PATH = DIRECTORY + '/model.pkl'  # if local
+    MODEL_PATH = '/Users/meteakgun/PycharmProjects/dppe-auc/model.pkl'  # if local
     RESULT_PATH = DIRECTORY + '/results.pkl'
     # print(MODEL_PATH)
     train = Train(model=MODEL_PATH, results=RESULT_PATH)
@@ -441,7 +441,7 @@ def user_part(res_path, sk_path, sk_pw):
     DIRECTORY = os.getcwd()
     #  print("Comparing both approaches in same run")
     MAX = 100000
-    no_of_decision_points = 200
+    no_of_decision_points = 100
 
     approx_auc_diff, exact_auc_diff = [], []
     approx_total_times, exact_total_times = [], []
@@ -473,20 +473,22 @@ def user_part(res_path, sk_path, sk_pw):
     t1 = time.perf_counter()
     auc_pp_exact = pp_auc_station_final(results["exact"], sk_path, sk_pw, APPROX=True)
     t2 = time.perf_counter()
-    times['approx']['station_2'].append(t2 - t1)
-    total_time_approx = times["approx"]['s_1_total'][-1] + times["approx"]['proxy'][-1] + (
-            times["approx"]['station_2'][-1] * stations)
-    print(f'Approx execution time by station - Step II {times["approx"]["station_2"][-1]:0.4f} seconds')
-    print('Approx total time {}'.format(total_time_approx))
-
-    t5 = time.perf_counter()
-    auc_pp_approx = pp_auc_station_final(results["approx"], sk_path, sk_pw, APPROX=True)
-    t6 = time.perf_counter()
-    times['exact']['station_2'].append(t6 - t5)
+    times['exact']['station_2'].append(t2 - t1)
     print('\n')
     total_time_exact = times["exact"]['s_1_total'][-1] + times["exact"]['proxy'][-1] + (
             times["exact"]['station_2'][-1] * len(times["approx"]['station_1']))
     print(f'Exact execution time by User - Step II {times["exact"]["station_2"][-1]:0.4f} seconds')
+
+
+
+    t5 = time.perf_counter()
+    auc_pp_approx = pp_auc_station_final(results["approx"], sk_path, sk_pw, APPROX=True)
+    t6 = time.perf_counter()
+    times['approx']['station_2'].append(t6 - t5)
+    total_time_approx = times["approx"]['s_1_total'][-1] + times["approx"]['proxy'][-1] + (
+            times["approx"]['station_2'][-1] * stations)
+    print(f'Approx execution time by station - Step II {times["approx"]["station_2"][-1]:0.4f} seconds')
+    print('Approx total time {}'.format(total_time_approx))
     print('Exact total time {}'.format(total_time_exact))
     per['exact']['total_time'].append(total_time_exact)
     exact_total_times.append(total_time_exact)
@@ -510,11 +512,11 @@ def user_part(res_path, sk_path, sk_pw):
 
 if __name__ == '__main__':
 
-    res_path = '/Users/YOUR_PATH/dppe-auc/test-train/results.pkl'
-    sk_path = '/Users/YOUR_PATH/Downloads/demo.pem'
-    station_rsa_sk_path = '/Users/YOUR_PATH/dppe-auc/key.pem'
-    sk_pw = 'PW'
-    conf_path = '/Users/YOUR_PATH/dppe-auc/test-train/train_config.json'
+    res_path = '/Users/meteakgun/PycharmProjects/dppe-auc/test-train/results.pkl'
+    sk_path = '/Users/meteakgun/Downloads/demo.pem'
+    station_rsa_sk_path = '/Users/meteakgun/Downloads/key.pem'
+    sk_pw = 'start123'
+    conf_path = '/Users/meteakgun/PycharmProjects/dppe-auc/test-train/train_config.json'
 
     for i in range(5):
         execution_simulation(conf_path, station_rsa_sk_path)

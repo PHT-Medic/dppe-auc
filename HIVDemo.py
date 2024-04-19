@@ -48,41 +48,41 @@ class Train:
             with open(self.results, 'rb') as results_file:
                 return pickle.load(file=results_file)
         except Exception:
-            return {'approx':{'enc_rx': {},
-                    'pp_auc_tables': {},
-                    'encrypted_ks': [],
-                    'encrypted_r1': {},  # index is used by station i
-                    'encrypted_r2': {},
-                    'aggregator_rsa_pk': {},
-                    'aggregator_paillier_pk': {},
-                    'stations_paillier_pk': {},
-                    'stations_rsa_pk': {},
-                    'proxy_encrypted_r_N': {},  # index 0 = r1_iN; 1 = r2_iN
-                    'D1': [],
-                    'D2': [],
-                    'D3': [],
-                    'N1': [],
-                    'N2': [],
-                    'N3': []
-                    },
+            return {'approx': {'enc_rx': {},
+                               'pp_auc_tables': {},
+                               'encrypted_ks': [],
+                               'encrypted_r1': {},  # index is used by station i
+                               'encrypted_r2': {},
+                               'aggregator_rsa_pk': {},
+                               'aggregator_paillier_pk': {},
+                               'stations_paillier_pk': {},
+                               'stations_rsa_pk': {},
+                               'proxy_encrypted_r_N': {},  # index 0 = r1_iN; 1 = r2_iN
+                               'D1': [],
+                               'D2': [],
+                               'D3': [],
+                               'N1': [],
+                               'N2': [],
+                               'N3': []
+                               },
                     'exact': {'enc_rx': {},
-                                'pp_auc_tables': {},
-                                'encrypted_ks': [],
-                                'encrypted_r1': {},  # index is used by station i
-                                'encrypted_r2': {},
-                                'aggregator_rsa_pk': {},
-                                'aggregator_paillier_pk': {},
-                                'stations_paillier_pk': {},
-                                'stations_rsa_pk': {},
-                                'proxy_encrypted_r_N': {},  # index 0 = r1_iN; 1 = r2_iN
-                                'D1': [],
-                                'D2': [],
-                                'D3': [],
-                                'N1': [],
-                                'N2': [],
-                                'N3': []
-                                }
-                     }
+                              'pp_auc_tables': {},
+                              'encrypted_ks': [],
+                              'encrypted_r1': {},  # index is used by station i
+                              'encrypted_r2': {},
+                              'aggregator_rsa_pk': {},
+                              'aggregator_paillier_pk': {},
+                              'stations_paillier_pk': {},
+                              'stations_rsa_pk': {},
+                              'proxy_encrypted_r_N': {},  # index 0 = r1_iN; 1 = r2_iN
+                              'D1': [],
+                              'D2': [],
+                              'D3': [],
+                              'N1': [],
+                              'N2': [],
+                              'N3': []
+                              }
+                    }
 
     def save_results(self, results):
         """
@@ -176,7 +176,7 @@ if __name__ == '__main__':
     print("Comparing both approaches in same run")
 
     MAX = 100000
-    no_of_decision_points = 200
+    no_of_decision_points = 100
 
     approx_auc_diff, exact_auc_diff = [], []
     approx_total_times, exact_total_times = [], []
@@ -186,8 +186,8 @@ if __name__ == '__main__':
     best_time = 100
     best_diff = 10
     per = {'approx': {'samples': [],
-           'flags': [],
-           'total_time': []},
+                      'flags': [],
+                      'total_time': []},
            'exact': {'samples': [],
                      'flags': [],
                      'total_time': []}}
@@ -197,7 +197,7 @@ if __name__ == '__main__':
     for repetition in range(total_repetitions):
         DATA_STORAGE_PATH = DIRECTORY + '/decrypted'
         SUB_DIR = DIRECTORY + "/" + str(repetition)
-        MODEL_PATH = SUB_DIR + '/pht_results/model.pkl'
+        MODEL_PATH = 'model.pkl'
         RESULT_PATH = SUB_DIR + '/pht_results/results.pkl'
 
         train = Train(model=MODEL_PATH, results=RESULT_PATH)
@@ -234,12 +234,10 @@ if __name__ == '__main__':
                            "station_2": [],
                            "s_1_total": []}}
         data_approx, data_exact = [], []
-        for i in range(stations):
-            print('Station {}'.format(i + 1))
-            filename = DIRECTORY + '/data/sequences_s' + str(i + 1) + '.txt'
-            data = defaultdict(list)
-            model = train.load_model()
 
+        data = defaultdict(list)
+        for i in range(stations):
+            filename = DIRECTORY + '/data/sequences_s' + str(i + 1) + '.txt'
             feature_len = None
             with open(filename, 'r') as f:
                 for line in f:
@@ -259,33 +257,39 @@ if __name__ == '__main__':
                         if feature_len != N:
                             raise ValueError
                     data[label].append(item)
-            print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
-            data = {'CXCR4': data['CXCR4'],
-                    'CCR5': data['CCR5']}
+        data = {'CXCR4': data['CXCR4'],
+                'CCR5': data['CCR5']}
+        list_key_value = [[k, v] for k, v in data.items()]
 
-            list_key_value = [[k, v] for k, v in data.items()]
+        X = []
+        Y = []
+        total_s1_approx, total_s1_exact = 0, 0
 
-            X = []
-            Y = []
-            total_s1_approx, total_s1_exact = 0, 0
+        for j in range(len(data['CCR5'])):
+            X.append(data['CCR5'][j])
+            Y.append(1)
+            try:
+                X.append(data['CXCR4'][j])
+                Y.append(0)
+            except Exception:
+                pass
 
-            for j in range(len(data['CCR5'])):
-                X.append(data['CCR5'][j])
-                Y.append(1)
-                try:
-                    X.append(data['CXCR4'][j])
-                    Y.append(0)
-                except Exception:
-                    pass
+        x_train, x_test_total, y_train, y_test_total = train_test_split(X, Y, test_size=0.10, random_state=1,
+                                                                        shuffle=True)
+        model = GradientBoostingClassifier()
+        classes = np.array([0, 1])
+        model.fit(x_train, y_train)
 
-            x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, random_state=1, shuffle=True)
+        train.save_model(model)
+
+        for i in range(stations):
+            print('Station {}'.format(i + 1))
+
+            x_train, x_test, y_train, y_test = train_test_split(x_test_total, y_test_total, test_size=1 / stations,
+                                                                random_state=1, shuffle=True)
+            x_test_total = x_train
+            y_test_total = y_train
             print('Hold out test size for comparison: {}'.format(Counter(y_test)))
-
-            if model is None:
-                model = GradientBoostingClassifier()
-
-            classes = np.array([0, 1])
-            model.fit(x_train, y_train)
 
             y_pred_prob = model.predict_proba(x_test)[:, -1]
 
@@ -295,15 +299,18 @@ if __name__ == '__main__':
             pre = np.array(y_pred_prob)
 
             label = y_test
-            exact_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=False, APPROX=False)
-            approx_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=False, APPROX=True)
+            exact_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=False,
+                                            APPROX=False)
+            approx_stat_df = data_generation(pre, label, DATA_STORAGE_PATH, station=i, run=repetition, save=False,
+                                             APPROX=True)
             data_approx.append(approx_stat_df.copy())
             data_exact.append(exact_stat_df.copy())
 
             t1 = time.perf_counter()
             print('Station - DPPA-AUC protocol - Step I')
-            results_approx = dppa_auc_protocol(approx_stat_df, decision_points, results["approx"], SUB_DIR, station=i + 1, max_value=MAX,
-                                            save_data=SAVE_DATA, save_keys=SAVE_KEYS, keys=keys_approx)
+            results_approx = dppa_auc_protocol(approx_stat_df, decision_points, results["approx"], SUB_DIR,
+                                               station=i + 1, max_value=MAX,
+                                               save_data=SAVE_DATA, save_keys=SAVE_KEYS, keys=keys_approx)
             t2 = time.perf_counter()
             times['approx']["station_1"].append(t2 - t1)
 
@@ -322,9 +329,11 @@ if __name__ == '__main__':
                 train.save_results(results)
             print('\n')
         print(f'Total exact execution time at stations - Step 1 {sum(times["exact"]["station_1"]):0.4f} seconds')
-        print(f'Average exact execution time at stations - Step 1 {sum(times["exact"]["station_1"]) /  len(times["exact"]["station_1"]):0.4f}' ' seconds')
+        print(
+            f'Average exact execution time at stations - Step 1 {sum(times["exact"]["station_1"]) / len(times["exact"]["station_1"]):0.4f}' ' seconds')
         print(f'Total approx execution time at stations - Step 1 {sum(times["approx"]["station_1"]):0.4f} seconds')
-        print(f'Average approx execution time at stations - Step 1 {sum(times["approx"]["station_1"]) / len(times["approx"]["station_1"]):0.4f}' ' seconds')
+        print(
+            f'Average approx execution time at stations - Step 1 {sum(times["approx"]["station_1"]) / len(times["approx"]["station_1"]):0.4f}' ' seconds')
         print('Starting proxy protocol')
         if SIMULATE_PUSH_PULL:
             results = train.load_results()
@@ -332,14 +341,17 @@ if __name__ == '__main__':
         times['approx']['s_1_total'].append(total_s1_approx)
         times['exact']['s_1_total'].append(total_s1_exact)
         t3 = time.perf_counter()
-        approx_results = dppa_auc_proxy(SUB_DIR, results["approx"], max_value=MAX, save_keys=SAVE_KEYS, keys=keys_approx,
-                                     no_dps=no_of_decision_points)
+        approx_results = dppa_auc_proxy(SUB_DIR, results["approx"], max_value=MAX, save_keys=SAVE_KEYS,
+                                        keys=keys_approx,
+                                        no_dps=no_of_decision_points)
         t4 = time.perf_counter()
+        print("appx time 2 = %s" % (t4 - t3))
         times["approx"]['proxy'].append(t4 - t3)
         print(f'Approx execution time by proxy station {times["approx"]["proxy"][-1]:0.4f} seconds')
 
         t3 = time.perf_counter()
-        exact_results = dppe_auc_proxy(SUB_DIR, results["exact"], max_value=MAX, save_keys=SAVE_KEYS, run=repetition, keys=keys_exact)
+        exact_results = dppe_auc_proxy(SUB_DIR, results["exact"], max_value=MAX, save_keys=SAVE_KEYS, run=repetition,
+                                       keys=keys_exact)
         t4 = time.perf_counter()
         times["exact"]['proxy'].append(t4 - t3)
         print(f'Exact execution time by proxy station {times["exact"]["proxy"][-1]:0.4f} seconds')
@@ -350,9 +362,11 @@ if __name__ == '__main__':
 
         print('Station - DPPE-AUC & DPPA-AUC protocol - Step II')
 
-        auc_gt_approx, per['approx'] = calculate_regular_auc(stations, per['approx'], DATA_STORAGE_PATH, save=False, data=data_approx, APPROX=True)
+        auc_gt_approx, per['approx'] = calculate_regular_auc(stations, per['approx'], DATA_STORAGE_PATH, save=False,
+                                                             data=data_approx, APPROX=True)
         print('Approx GT-AUC: ', auc_gt_approx)
-        auc_gt_exact, per['exact'] = calculate_regular_auc(stations, per['exact'], DATA_STORAGE_PATH, save=False, data=data_exact, APPROX=False)
+        auc_gt_exact, per['exact'] = calculate_regular_auc(stations, per['exact'], DATA_STORAGE_PATH, save=False,
+                                                           data=data_exact, APPROX=False)
         print('Exact GT-AUC: ', auc_gt_exact)
 
         t5 = time.perf_counter()
@@ -360,7 +374,8 @@ if __name__ == '__main__':
         t6 = time.perf_counter()
 
         times['exact']['station_2'].append(t6 - t5)
-        total_time_exact = times["exact"]['s_1_total'][-1] + times["exact"]['proxy'][-1] + (times["exact"]['station_2'][-1] * stations)
+        total_time_exact = times["exact"]['s_1_total'][-1] + times["exact"]['proxy'][-1] + (
+                    times["exact"]['station_2'][-1] * stations)
         print(f'Exact execution time by station - Step II {times["exact"]["station_2"][-1]:0.4f} seconds')
         print('Exact total time {}'.format(total_time_exact))
         per['exact']['total_time'].append(total_time_exact)
@@ -380,7 +395,7 @@ if __name__ == '__main__':
         t6 = time.perf_counter()
         times['approx']['station_2'].append(t6 - t5)
         total_time_approx = times["approx"]['s_1_total'][-1] + times["approx"]['proxy'][-1] + (
-                    times["approx"]['station_2'][-1] * stations)
+                times["approx"]['station_2'][-1] * stations)
         print(f'Approx execution time by station - Step II {times["approx"]["station_2"][-1]:0.4f} seconds')
         print('Approx total time {}'.format(total_time_approx))
         per['approx']['total_time'].append(total_time_approx)
@@ -389,7 +404,8 @@ if __name__ == '__main__':
         approx_total_times.append(total_time_approx)
 
         approx_avg_diff = sum(approx_auc_diff) / len(approx_auc_diff)
-        print('Approx average differences over {} runs with by {} and all {}'.format(len(approx_auc_diff), approx_avg_diff, approx_auc_diff))
+        print('Approx average differences over {} runs with by {} and all {}'.format(len(approx_auc_diff),
+                                                                                     approx_avg_diff, approx_auc_diff))
         approx_avg_time = sum(approx_total_times) / len(approx_total_times)
         print('Approx average time total {} and each runtime {}'.format(approx_avg_time, approx_total_times))
 

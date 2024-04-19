@@ -183,6 +183,9 @@ def dppa_auc_proxy(directory, results, max_value, save_keys, keys, no_dps=int): 
         table_i = results['pp_auc_tables'][i]
         df_list.append(table_i)
 
+    print(len(df_list))
+    print(no_dps)
+
     tp_values = [encrypt(agg_pk, 0) for _ in range(no_dps)]
     fp_values = [encrypt(agg_pk, 0) for _ in range(no_dps)]
 

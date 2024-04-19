@@ -548,6 +548,7 @@ def dppe_auc_proxy(directory, results, max_value, save_keys, run, keys):
     tp_values.insert(0, encrypt(agg_pk, 0))
     fp_values.insert(0, encrypt(agg_pk, 0))
     tmp_sum = fp_values[0]
+    print(M)
     for i in range(1, M + 1):
         tp_values.append(add(agg_pk, tp_values[i - 1], df_new_index['Label'][i - 1]))
         sum_flags = add(agg_pk, df_new_index['Flag'][i - 1], tmp_sum)
