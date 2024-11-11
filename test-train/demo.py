@@ -176,6 +176,10 @@ def data_generation(pre, label, data_path, station, run, save, APPROX):
         list_fakes = s.explode(ignore_index=True)
         fakes = len(list_fakes)
 
+
+
+
+
         fake_data = {"Pre": random.choices(values, weights=v, k=fakes),
                      # "Pre": list_fakes,
                      "Label": np.random.choice([0], size=fakes),
@@ -526,6 +530,11 @@ def run_demo_simulation(conf_path, station_rsa_sk_path, sk_path, sk_pw, res_path
     user_part(res_path, sk_path, sk_pw)
 
 if __name__ == '__main__':
+    res_path = '/Users/Path/test-train/results.pkl'
+    sk_path = '/Users/Path/demo.pem'
+    station_rsa_sk_path = '/Users/Path/pp-auc/key.pem'
+    sk_pw = 'PW'
+    conf_path = '/Users/Path/test-train/train_config.json'
 
     files_to_delete = ['results.pkl', 'model.pkl']
 
