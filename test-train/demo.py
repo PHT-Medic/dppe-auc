@@ -263,9 +263,6 @@ def execution_simulation(conf_path, sk_path):
     #  print("Comparing both approaches in same run")
     MAX = 100000
     no_of_decision_points = 100
-    # print(os.getcwd())
-    approx_auc_diff, exact_auc_diff = [], []
-    approx_total_times, exact_total_times = [], []
     total_repetitions = 1  # 10 before
 
     best_time = 100
@@ -276,19 +273,19 @@ def execution_simulation(conf_path, sk_path):
     # MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
     # RESULT_PATH = '/opt/pht_results/results.pkl'
 
-    MODEL_PATH = '/Users/meteakgun/PycharmProjects/dppe-auc/model.pkl'  # if local
+    MODEL_PATH = DIRECTORY + '/model.pkl'  # if local
     RESULT_PATH = DIRECTORY + '/results.pkl'
     # print(MODEL_PATH)
     train = Train(model=MODEL_PATH, results=RESULT_PATH)
 
     # Init station: create keys, save init
     results = train.load_results()
-    # print(results)
+
     times = results['times']
     per = results['per']
     data_exact = results['data_exact']
     data_approx = results['data_approx']
-    # stations = len(results['approx']['stations_rsa_pk']) - 1  #
+
     stations = results['station'] + 1
     print('Station: {}'.format(stations))
 
@@ -361,18 +358,17 @@ def execution_simulation(conf_path, sk_path):
         x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, random_state=1, shuffle=True)
         print('Hold out test size for comparison: {}'.format(Counter(y_test)))
 
-        # if model is None:
-        #    model = GradientBoostingClassifier()
+        if model is None:
+            model = GradientBoostingClassifier()
 
-        # classes = np.array([0, 1])
-        # model.fit(x_train, y_train)
+        classes = np.array([0, 1])
+        model.fit(x_train, y_train)
 
         # START DPPE Protocol
         y_pred_prob = model.predict_proba(x_test)[:, -1]
         pre = np.array(y_pred_prob)
 
         label = y_test
-
         exact_stat_df = data_generation(pre, label, DIRECTORY + '/pht_results/', station=stations, run=1,
                                         save=False,
                                         APPROX=False)
@@ -385,7 +381,7 @@ def execution_simulation(conf_path, sk_path):
 
         print('Station - DPPA-AUC protocol - Step I')
         t1 = time.perf_counter()
-        results_approx = dppa_auc_protocol(approx_stat_df, decision_points, results["approx"],
+        results['approx'] = dppa_auc_protocol(approx_stat_df, decision_points, results["approx"],
                                            station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
         t2 = time.perf_counter()
         times['approx']["station_1"].append(t2 - t1)
@@ -393,7 +389,7 @@ def execution_simulation(conf_path, sk_path):
 
         print('Station - DPPE-AUC protocol - Step I')
         t1 = time.perf_counter()
-        results_exact = dppe_auc_protocol(exact_stat_df, results["exact"], station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
+        results['exact'] = dppe_auc_protocol(exact_stat_df, results["exact"], station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
         t2 = time.perf_counter()
         times['exact']["station_1"].append(t2 - t1)
         print(f'Exact execution time by station {times["exact"]["station_1"][-1]:0.4f} seconds')
@@ -484,42 +480,58 @@ def user_part(res_path, sk_path, sk_pw):
     t5 = time.perf_counter()
     auc_pp_approx = pp_auc_station_final(results["approx"], sk_path, sk_pw, APPROX=True)
     t6 = time.perf_counter()
+
     times['approx']['station_2'].append(t6 - t5)
-    total_time_approx = times["approx"]['s_1_total'][-1] + times["approx"]['proxy'][-1] + (
-            times["approx"]['station_2'][-1] * stations)
+
+    # Compute total approximate time for the current run
+    total_time_approx = (
+            times["approx"]['s_1_total'][-1] +
+            times["approx"]['proxy'][-1] +
+            (times["approx"]['station_2'][-1] * stations)
+    )
+
+    # Display the execution time for station 2 and total approximate time
     print(f'Approx execution time by station - Step II {times["approx"]["station_2"][-1]:0.4f} seconds')
-    print('Approx total time {}'.format(total_time_approx))
-    print('Exact total time {}'.format(total_time_exact))
+    print(f'Approx total time {total_time_approx}')
+    print(f'Exact total time {total_time_exact}')
+
+    # Append the exact total time for this run
     per['exact']['total_time'].append(total_time_exact)
     exact_total_times.append(total_time_exact)
 
+    # Calculate and store the AUC differences for exact data
     diff_exact = auc_gt_exact - auc_pp_exact
     exact_auc_diff.append(diff_exact)
-    print('\n')
 
+    # Compute and display average exact AUC difference
     exact_avg_diff = sum(exact_auc_diff) / len(exact_auc_diff)
-    print('Exact average differences over {} runs with by {} and all {}'.format(len(exact_auc_diff),
-                                                                                exact_avg_diff, exact_auc_diff))
+    print(
+        f'Exact average differences over {len(exact_auc_diff)} runs: Average = {exact_avg_diff}, All differences = {exact_auc_diff}')
+
+    # Calculate and store the AUC differences for approximate data
     diff_approx = auc_gt_approx - auc_pp_approx
     approx_auc_diff.append(diff_approx)
 
+    # Compute and display average approximate AUC difference
     approx_avg_diff = sum(approx_auc_diff) / len(approx_auc_diff)
-    print('Approx average differences over {} runs with by {} and all {}'.format(len(approx_auc_diff),
-                                                                                 approx_avg_diff, approx_auc_diff))
-    # exact_avg_time = sum(exact_total_times) / len(exact_total_times)
-    # print('Exact average time total {} and each runtime {}'.format(exact_avg_time, exact_total_times))
+    print(
+        f'Approx average differences over {len(approx_auc_diff)} runs: Average = {approx_avg_diff}, All differences = {approx_auc_diff}')
 
 
-if __name__ == '__main__':
-
-    res_path = '/Users/PATH/dppe-auc/test-train/results.pkl'
-    sk_path = '/Users/PATH/demo.pem'
-    station_rsa_sk_path = '/Users/PATH/key.pem'
-    sk_pw = 'PW'
-    conf_path = '/Users/PATH/dppe-auc/test-train/train_config.json'
-
+def run_demo_simulation(conf_path, station_rsa_sk_path, sk_path, sk_pw, res_path):
     for i in range(5):
         execution_simulation(conf_path, station_rsa_sk_path)
         print('\n')
 
     user_part(res_path, sk_path, sk_pw)
+
+if __name__ == '__main__':
+
+    files_to_delete = ['results.pkl', 'model.pkl']
+
+    # Delete each file if it exists
+    for file in files_to_delete:
+        if os.path.exists(file):
+            os.remove(file)
+
+    run_demo_simulation(conf_path, station_rsa_sk_path, sk_path, sk_pw, res_path)

@@ -1,123 +1,140 @@
-from paillier_util import *
+import random
+from paillier_util import powmod, mulmod, invert, isInvertible, getprimeover
+import gmpy2  # Für optimierte mathematische Operationen
 
-
-class PrivateKey(object):
+class PrivateKey:
     def __init__(self, n, x):
         self.n = n
         self.x = x
-        self.x1 = random.randrange(1, x-1, 1)
+        self.x1 = random.SystemRandom().randrange(1, x - 1)
         self.x2 = x - self.x1
-        self.nsqr = pow(n, 2)
+        self.nsqr = n * n  # Precomputed for efficiency
 
     def __repr__(self):
-        return '<PrivateKey: %s %s>' % (self.x, self.n)
+        return f'<PrivateKey: {self.x} {self.n}>'
 
-
-class PrivateKeyOne(object):
+class PrivateKeyOne:
     def __init__(self, n, x1):
         self.n = n
         self.x1 = x1
-        self.nsqr = pow(n, 2)
+        self.nsqr = n * n  # Precomputed
 
     def __repr__(self):
-        return '<PrivateKey_1: %s %s>' % (self.x, self.x1)
+        return f'<PrivateKey_1: {self.x1} {self.n}>'
 
-
-class PrivateKeyTwo(object):
+class PrivateKeyTwo:
     def __init__(self, n, x2):
         self.n = n
         self.x2 = x2
-        self.nsqr = pow(n, 2)
+        self.nsqr = n * n  # Precomputed
 
     def __repr__(self):
-        return '<PrivateKey_2: %s %s>' % (self.x, self.x1)
+        return f'<PrivateKey_2: {self.x2} {self.n}>'
 
-
-class PublicKey(object):
+class PublicKey:
     def __init__(self, n, g, x):
         self.n = n
         self.g = g
-        self.nsqr = pow(n, 2)
-        self.h = powmod(g, x, self.nsqr)
-        self.r = pow(128, 2)
+        self.nsqr = n * n  # Precomputed
+        self.h = gmpy2.powmod(g, x, self.nsqr)  # Optimized modular exponentiation
+        self.r = 128 * 128  # Equivalent to pow(128, 2), simplified
 
     def __repr__(self):
-        return '<PublicKey: %s %s %s>' % (self.n, self.g, self.h)
-
+        return f'<PublicKey: {self.n} {self.g} {self.h}>'
 
 def random_element(n):
-    g = random.SystemRandom().randrange(1, n)
-    while True:
-        if isInvertible(g, n):
-            break
-        else:
-            g = random.SystemRandom().randrange(1, n)
-
+    """
+    Generate a random element from 1 to n that is invertible modulo n.
+    """
+    rand_gen = random.SystemRandom()
+    g = rand_gen.randrange(1, n)
+    while not isInvertible(g, n):
+        g = rand_gen.randrange(1, n)
     return g
-
 
 def choose_g(n):
-    a = random_element(pow(n, 2))
-    g = powmod((-1*a), (2*n), pow(n, 2))
+    """
+    Choose a generator g for the Paillier cryptosystem.
+    """
+    a = random_element(n * n)
+    g = gmpy2.powmod(-a, 2 * n, n * n)  # Optimized with gmpy2
     return g
 
-
 def generate_keypair(bits):
+    """
+    Generate a key pair for the Paillier cryptosystem.
+    """
     p = getprimeover(bits // 2)
     q = getprimeover(bits // 2)
     n = p * q
-    x = random.SystemRandom().randrange(1, pow(n, 2) >> 1)
+    x = random.SystemRandom().randrange(1, (n * n) >> 1)
     g = choose_g(n)
     return PrivateKey(n, x), PublicKey(n, g, x)
 
-
 def encrypt(pub, plain):
-    r = random.SystemRandom().randrange(1, pub.r)
-    c1 = powmod(pub.g, r, pub.nsqr)
-    c2 = (powmod(pub.h, r, pub.nsqr) * (1+((plain * pub.n) % pub.nsqr) % pub.nsqr)) % pub.nsqr
+    """
+    Encrypt an integer using the public key.
+    """
+    rand_gen = random.SystemRandom()
+    r = rand_gen.randrange(1, pub.r)
+    c1 = gmpy2.powmod(pub.g, r, pub.nsqr)
+    c2 = (gmpy2.powmod(pub.h, r, pub.nsqr) * (1 + (plain * pub.n) % pub.nsqr)) % pub.nsqr
     return [c1, c2]
 
-
 def add(pub, a, b):
-    """Add one encrypted integer to another"""
+    """
+    Add two encrypted integers.
+    """
     return [mulmod(a[0], b[0], pub.nsqr), mulmod(a[1], b[1], pub.nsqr)]
 
-
 def mul_const(pub, a, n):
-    """Multiplies an encrypted integer by a constant"""
-    return [powmod(a[0], n, pub.nsqr), powmod(a[1], n, pub.nsqr)]
-
+    """
+    Multiply an encrypted integer by a constant.
+    """
+    return [gmpy2.powmod(a[0], n, pub.nsqr), gmpy2.powmod(a[1], n, pub.nsqr)]
 
 def add_const(pub, a, n):
-    """Add one encrypted integer to a constant"""
+    """
+    Add a constant to an encrypted integer.
+    """
     b = encrypt(pub, n)
     return [mulmod(a[0], b[0], pub.nsqr), mulmod(a[1], b[1], pub.nsqr)]
 
-
 def decrypt(priv, cipher):
-    cinv = invert(powmod(cipher[0], priv.x, priv.nsqr), priv.nsqr)
+    """
+    Decrypt an encrypted integer using the private key.
+    """
+    cinv = invert(gmpy2.powmod(cipher[0], priv.x, priv.nsqr), priv.nsqr)
     u = mulmod(cipher[1], cinv, priv.nsqr) - 1
-    plain = u//priv.n
+    plain = u // priv.n
     return plain
 
-
 def proxy_decrypt(priv, cipher):
-    cinv = invert(powmod(cipher[0], priv.x1, priv.nsqr), priv.nsqr)
+    """
+    Perform a proxy decryption step with part of the private key.
+    """
+    cinv = invert(gmpy2.powmod(cipher[0], priv.x1, priv.nsqr), priv.nsqr)
     cipher[1] = mulmod(cipher[1], cinv, priv.nsqr)
     return cipher
 
-
 def station_decrypt(priv, cipher):
-    cinv = invert(powmod(cipher[0], priv.x2, priv.nsqr), priv.nsqr)
+    """
+    Perform the final decryption step at the station.
+    """
+    cinv = invert(gmpy2.powmod(cipher[0], priv.x2, priv.nsqr), priv.nsqr)
     u = mulmod(cipher[1], cinv, priv.nsqr) - 1
-    plain = u//priv.n
+    plain = u // priv.n
     return plain
 
-
 def int_to_bytes(i: int, *, signed: bool = False) -> bytes:
-    length = ((i + ((i * signed) < 0)).bit_length() + 7 + signed) // 8
+    """
+    Convert an integer to a byte array.
+    """
+    length = (i.bit_length() + 7) // 8 or 1
     return i.to_bytes(length, byteorder='big', signed=signed)
 
-
 def bytes_to_int(b: bytes, *, signed: bool = False) -> int:
+    """
+    Convert a byte array to an integer.
+    """
     return int.from_bytes(b, byteorder='big', signed=signed)
