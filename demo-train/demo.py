@@ -445,9 +445,9 @@ def user_part(res_path, sk_path, sk_pw):
     stations = len(times["approx"]['station_1'])
     print('Station - DPPE-AUC & FHAUC-AUC protocol - Step II')
 
-    auc_gt_approx, per['approx'] = calculate_regular_auc(1, per['approx'], data=data_approx, APPROX=True)
+    auc_gt_approx, per['FHAUC'] = calculate_regular_auc(1, per['FHAUC'], data=data_approx, APPROX=True)
     print('Approx GT-AUC: ', auc_gt_approx)
-    auc_gt_exact, per['exact'] = calculate_regular_auc(1, per['exact'], data=data_exact, APPROX=False)
+    auc_gt_exact, per['DPPE-AUC'] = calculate_regular_auc(1, per['DPPE-AUC'], data=data_exact, APPROX=False)
     print('Exact GT-AUC: ', auc_gt_exact)
 
     t1 = time.perf_counter()
@@ -480,7 +480,7 @@ def user_part(res_path, sk_path, sk_pw):
     print(f'Exact total time {total_time_exact}')
 
     # Append the exact total time for this run
-    per['exact']['total_time'].append(total_time_exact)
+    per['DPPE-AUC']['total_time'].append(total_time_exact)
     exact_total_times.append(total_time_exact)
 
     # Calculate and store the AUC differences for exact data

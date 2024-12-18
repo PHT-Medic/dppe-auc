@@ -1,8 +1,12 @@
 # DPPE-AUC
-Distributed Privacy-Preserving exact - area under the curve; a novel method to compute the exact global AUC without revealing individual sensitive input data. It utilizes a combination of Paillier, symmetric, and asymmetric encryption with perfect randomized encoding to compute the exact measurement even with tie conditions. 
+
+**Distributed Privacy-Preserving Exact - Area Under the Curve** (DPPE-AUC) is a novel method for calculating the exact
+global AUC without exposing individual sensitive input data. The approach leverages a combination of Paillier encryption,
+symmetric and asymmetric cryptography, and perfect randomized encoding to ensure privacy and accuracy, even in the
+presence of tie conditions.
+
 ## Install requirements
 Run `pip install -r requirements.txt` to ensure all requirements are fulfilled.
-
 
 ## Showcase
 Sequence data of HIV-1 strains and the corresponding coreceptor binding of 10462 subjects was used. The raw data is from
@@ -23,7 +27,7 @@ The **input data figures** illustrate the **real distribution** of prediction va
 ![plot 1](./plots/hiv_s1.png)
 ![plot 2](./plots/hiv_s2.png)
 ![plot 3](./plots/hiv_s3.png)
-- 
+
 ### **Obscured Data Figures**  
 The **obscured data figures** aim to **hide the original input data distribution** while maintaining a minimal runtime overhead and threshold size:
 
@@ -47,17 +51,24 @@ Two experiments are used to measure the runtime with synthetic data.
 To generate sample data, specify the number of stations and subjects. In the following experiments 10-60% of flag subjects are added randomly.
 
 ## Experiments
-The performance is evaluated against the commonly standard sklearn AUC library and FHAUC method from TODO cite.
+The performance is evaluated by comparing the proposed method against the standard scikit-learn AUC library and the [FHAUC method](https://arxiv.org/pdf/2403.14428).
 
-### Varying number of input parties
-In experiment 1 the number of samples are identical, but the number of input parties varies.
-The execution time is calculated absolute with each step and party for 10 runs. Therefore, the total execution time differs with the number of input parties.
+### Varying Number of Input Parties
+In Experiment 1, the number of input samples remains constant, while the number of input parties varies.
 
+The execution time is measured for each step and each party across 10 runs. As a result, the total execution time changes depending on the number of input parties involved. This provides insights into the scalability of the method with respect to the number of parties.
 ![plot 5](./plots/exp1.png)
 
+### Varying Number of Input Samples
+In Experiment 2, the number of input samples increases while the setup remains fixed at 3 stations.
 
-### Varying number of input samples
-In experiment 2 the number of samples are increasing with 3 stations.
-The total execution increases with the number of samples to encrypt and decrypt.
-
+As the number of samples grows, the total execution time also increases due to the additional computational overhead required for encrypting and decrypting a larger volume of data.
 ![plot 6](./plots/exp2.png)
+
+#### Observed Differences
+- **Exact Average Difference (over 90 runs):** `-1.2335811384723961e-17`  
+  This demonstrates near-perfect consistency with negligible variation in results.
+
+- **Approximate Average Difference (over 90 runs):** `-3.330596080498078e-05`  
+  The slight variation in approximate results reflects the trade-off between computational efficiency and precision, with the differences remaining minimal.
+
