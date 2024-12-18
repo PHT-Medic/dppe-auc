@@ -21,11 +21,11 @@ from FHM_approx import dppa_auc_protocol, dppa_auc_proxy, create_synthetic_data_
 from paillier import *
 
 
-def plot_input_data(df, df_real, df_fake, station, run, proxy=None):
+def plot_input_data(df, df_real, df_fake, station, proxy=None):
     if proxy:
         plt.clf()
         plt.style.use('ggplot')
-        plt.title('Run ' + str(run) + ' Data distribution at proxy')
+        plt.title('Data distribution at proxy')
         plt.hist(df['Dec_pre'], edgecolor='black', bins=40, color='orange', rwidth=0.6,
                  alpha=0.5, label='Obscured')
         plt.legend(loc='upper left')
@@ -40,7 +40,7 @@ def plot_input_data(df, df_real, df_fake, station, run, proxy=None):
         df_p = pd.DataFrame(d)
         plt.clf()
         plt.style.use('ggplot')
-        plt.title('Run ' + str(run) + ' Data distribution of station {}'.format(station + 1))
+        plt.title('Data distribution of station {}'.format(station + 1))
         plt.hist([df_p['Real'], df_p['Flag']], edgecolor='black', bins=40, color=['green', 'red'], stacked=True,
                  rwidth=0.6,
                  alpha=0.5, label=['Real', 'Flag'])
@@ -69,12 +69,12 @@ def calculate_regular_auc(stations, performance, data, APPROX):
     if APPROX:
         performance['flags'].append(0)
         filtered_df = sort_df
-        print('Use data from {} stations. Total of {} subjects (including 0 flag subjects) '.format(stations,
+        print('FHAUC uses data from {} stations. Total of {} subjects (including 0 flag subjects) '.format(stations,
                                                                                                     len(filtered_df)))
     else:
         flags = len(concat_df[concat_df['Flag'] == 0])
         performance['flags'].append(samples)
-        print('Use data from {} stations. Total of {} subjects (including {} flag subjects) '.format(stations,
+        print('DPPE-AUC uses data from {} stations. Total of {} subjects (including {} flag subjects) '.format(stations,
                                                                                                      len(concat_df),
                                                                                                      flags))
         filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
@@ -318,7 +318,7 @@ def dppe_auc_protocol(local_df, prev_results, directory=str, station=int, max_va
         enc_symm_key = prev_results['enc_symm_key'][0]
         env_symm_key = symm_key_rsa_decrypt(enc_symm_key, rsa_sk_path)
 
-        sk_s_i = prev_results['enc_s_p_sks'][station - 1]  # TODO verify if second station is correct positioned
+        sk_s_i = prev_results['enc_s_p_sks'][station - 1]
         dec_sk = {'n': Fernet(env_symm_key).decrypt(sk_s_i['n']).decode(),
                   'x': Fernet(env_symm_key).decrypt(sk_s_i['x']).decode()
                   }
@@ -351,7 +351,7 @@ def dppe_auc_proxy(results, max_value, sk_path):
     """
     agg_pk = results['aggregator_paillier_pk']
     enc_sk_1 = results['enc_agg_sk_1']
-    enc_symm_key = results['enc_symm_key'][-2]  # todo index last one at end
+    enc_symm_key = results['enc_symm_key'][-2]
     env_symm_key = symm_key_rsa_decrypt(enc_symm_key,sk_path)
     dec_sk_1 = {'n': Fernet(env_symm_key).decrypt(enc_sk_1['n']).decode(),
                 'x1': Fernet(env_symm_key).decrypt(enc_sk_1['x1']).decode()
@@ -378,7 +378,7 @@ def dppe_auc_proxy(results, max_value, sk_path):
 
     df_new_index = sort_df.reset_index()
     print("len_df: ", len(df_new_index))
-    #plot_input_data(df_new_index, None, None, None, None, proxy=True)
+    plot_input_data(df_new_index, None, None, None, proxy=True)
     M = len(df_new_index)
     tp_values = []
     fp_values = []
@@ -520,7 +520,7 @@ def pp_auc_station_final(train_results, sk_path, sk_pw, APPROX):
     else:
         auc = (N / D) / 2
     if APPROX:
-        print('DPPA-AUC: {}'.format(auc))
+        print('FHAUC: {}'.format(auc))
     else:
         print('DPPE-AUC: {}'.format(auc))
     return auc

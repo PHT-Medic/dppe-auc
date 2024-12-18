@@ -140,63 +140,70 @@ class Train:
             return None
 
 
-def data_generation(pre, label, data_path, station, run, save, APPROX):
-    if APPROX:
-        real_data = {
-            "Pre": pre,
-            "Label": label
-        }
-        df_real = pd.DataFrame(real_data, columns=['Pre', 'Label'])
-        df_real.sort_values('Pre', ascending=False, inplace=True)
+def data_generation(pre, label, data_path, station, save, approx):
+    real_data = {"Pre": pre, "Label": label, "Flag": [1] * len(label)}
+    df_real = pd.DataFrame(real_data)
+    df_real.sort_values('Pre', ascending=False, inplace=True)
+
+    if approx:
         if save:
-            df_real.to_pickle(data_path + '/data_s' + str(station + 1) + '.pkl')
+            df_real.to_pickle(f"{data_path}/data_s{station + 1}.pkl")
         return df_real
-    else:
-        real_data = {'Pre': pre, 'Label': label,
-                     'Flag': np.random.choice([1], size=len(label))}
-        df_real = pd.DataFrame(real_data, columns=['Pre', 'Label', 'Flag'])
-        print("Size real: {}".format(len(df_real)))
-        # TODO fake patients creation with only consiredering real values
-        # tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-        # values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]  # unique values
-        # counts = list(df_real['Pre'].value_counts(ascending=False))
-        # highest = counts[0] + int(counts[0] * 0.1)
-        # v = [highest - counts[x] for x in range(len(counts))]  # probabilities
-        # if sum(v) == 0:
-        #     v = [x + 1 for x in v]
-        # s = pd.Series(np.repeat(values[i], v[i]) for i in range(len(v)))
-        # list_fakes = s.explode(ignore_index=True)
-        # fakes = len(list_fakes)
-        tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-        values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]  # unique values
-        counts = list(df_real['Pre'].value_counts(normalize=True, ascending=False))
-        max_a = counts[0] + int(counts[0] * 0.1)
-        v = [max_a - counts[i] for i in range(len(counts))]  # probabilities
-        s = pd.Series(np.repeat(values[i], v[i]) for i in range(len(v)))
-        list_fakes = s.explode(ignore_index=True)
-        fakes = len(list_fakes)
+    # Create synthetic data
+    unique_vals = df_real['Pre'].unique()
+    counts = df_real['Pre'].value_counts()
+    highest_count = counts.max()
 
+    # Adjust the distribution to generate synthetic data
+    synthetic_pre = []
+    for val in unique_vals:
+        repetitions = highest_count - counts[val]
+        if repetitions > 0:
+            synthetic_pre.extend([val] * repetitions)
 
+    synthetic_data = {
+            "Pre": synthetic_pre,
+            "Label": [0] * len(synthetic_pre),  # Assign synthetic data a fixed label of 0
+            "Flag": [0] * len(synthetic_pre)  # Indicate synthetic data with Flag = 0
+    }
+    df_fake = pd.DataFrame(synthetic_data)
 
+    # Merge real and synthetic data
+    df = pd.concat([df_real, df_fake], ignore_index=True)
+    df = df.sample(frac=1).reset_index(drop=True)  # Shuffle the combined dataset
 
+    # Ensure consistency: set Label = 0 where Flag = 0
+    df.loc[df["Flag"] == 0, "Label"] = 0
 
-        fake_data = {"Pre": random.choices(values, weights=v, k=fakes),
-                     # "Pre": list_fakes,
-                     "Label": np.random.choice([0], size=fakes),
-                     "Flag": np.random.choice([0], size=fakes)
-                     }
-        df_fake = return_df(fake_data)
-        print("Size fake: {}".format(len(df_fake)))
-        df = [df_real, df_fake]
-        merged = pd.concat(df, axis=0)
-        df = merged.sample(frac=1).reset_index(drop=True)
-        plot_input_data(df, df_real, df_fake, station, run, proxy=False)
+    if save:
+        df.to_pickle(f"{data_path}/data_s{station + 1}.pkl")
+    unique_vals = df_real['Pre'].unique()
+    min_subjects = 3  # Fixed minimal number of synthetic subjects per unique value
 
-        df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
-        print("Size complete: {}".format(len(df)))
-        if save:
-            df.to_pickle(data_path + '/data_s' + str(station + 1) + '.pkl')
-        return df
+    synthetic_pre = []
+    for val in unique_vals:
+        synthetic_pre.extend([val] * min_subjects)
+
+    # Create synthetic data
+    synthetic_data = {
+        "Pre": synthetic_pre,
+        "Label": [0] * len(synthetic_pre),  # Label = 0 for synthetic data
+        "Flag": [0] * len(synthetic_pre)  # Flag = 0 for synthetic data
+    }
+    df_fake = pd.DataFrame(synthetic_data)
+
+    # Combine real and synthetic data
+    df = pd.concat([df_real, df_fake], ignore_index=True)
+    df = df.sample(frac=1).reset_index(drop=True)  # Shuffle the dataset
+
+    # Ensure consistency: Label = 0 where Flag = 0
+    df.loc[df["Flag"] == 0, "Label"] = 0
+
+    # Optional: Save the dataset
+    if save:
+        df.to_pickle(f"{data_path}/data_s{station + 1}.pkl")
+    plot_input_data(df, df_real, df_fake, station-1, proxy=False)
+    return df
 
 
 def initial_station(results, conf_path):
@@ -264,29 +271,20 @@ def initial_station(results, conf_path):
 def execution_simulation(conf_path, sk_path):
     DIRECTORY = os.getcwd()
 
-    #  print("Comparing both approaches in same run")
+    print("Comparing DPPE-AUC and FHAUC in same run")
     MAX = 100000
     no_of_decision_points = 100
-    total_repetitions = 1  # 10 before
-
-    best_time = 100
-    best_diff = 10
 
     decision_points = np.linspace(0, 1, num=no_of_decision_points)[::-1]
 
-    # MODEL_PATH = '/opt/pht_results/model.pkl'  # if prod
-    # RESULT_PATH = '/opt/pht_results/results.pkl'
-
-    MODEL_PATH = DIRECTORY + '/model.pkl'  # if local
+    MODEL_PATH = DIRECTORY + '/model.pkl'
     RESULT_PATH = DIRECTORY + '/results.pkl'
-    # print(MODEL_PATH)
     train = Train(model=MODEL_PATH, results=RESULT_PATH)
 
     # Init station: create keys, save init
     results = train.load_results()
 
     times = results['times']
-    per = results['per']
     data_exact = results['data_exact']
     data_approx = results['data_approx']
 
@@ -297,12 +295,12 @@ def execution_simulation(conf_path, sk_path):
 
     if not results['initial']:
         print('Station Init - Create and encrypt keys')
-
         t0 = time.perf_counter()
         results['approx'] = initial_station(results['approx'], conf_path)
         t1 = time.perf_counter()
         times['approx']["init"].append(t1 - t0)
         print(f'Key creation approximation method time {sum(times["approx"]["init"]):0.4f} seconds')
+
         t0 = time.perf_counter()
         results['exact'] = initial_station(results['exact'], conf_path)
         t1 = time.perf_counter()
@@ -315,8 +313,6 @@ def execution_simulation(conf_path, sk_path):
         # exit(0)
     elif not results['proxy']:
         # Station part I: load data, train model, save model, save data
-
-        filename = '/opt/pht_train/sequences_s' + str(stations) + '.txt'
         filename = DIRECTORY + '/sequences_s' + str(stations) + '.txt'
         data = defaultdict(list)
         model = train.load_model()
@@ -340,11 +336,9 @@ def execution_simulation(conf_path, sk_path):
                     if feature_len != N:
                         raise ValueError
                 data[label].append(item)
-        # print("Number of data points for training:", {key: len(value) for (key, value) in data.items()})
+        print("Number of data points for model training:", {key: len(value) for (key, value) in data.items()})
         data = {'CXCR4': data['CXCR4'],
                 'CCR5': data['CCR5']}
-
-        list_key_value = [[k, v] for k, v in data.items()]
 
         X = []
         Y = []
@@ -360,12 +354,11 @@ def execution_simulation(conf_path, sk_path):
                 pass
 
         x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.10, random_state=1, shuffle=True)
-        print('Hold out test size for comparison: {}'.format(Counter(y_test)))
+        print('Hold out test size for comparison of methods: {}'.format(Counter(y_test)))
 
         if model is None:
             model = GradientBoostingClassifier()
 
-        classes = np.array([0, 1])
         model.fit(x_train, y_train)
 
         # START DPPE Protocol
@@ -373,17 +366,13 @@ def execution_simulation(conf_path, sk_path):
         pre = np.array(y_pred_prob)
 
         label = y_test
-        exact_stat_df = data_generation(pre, label, DIRECTORY + '/pht_results/', station=stations, run=1,
-                                        save=False,
-                                        APPROX=False)
-        approx_stat_df = data_generation(pre, label, DIRECTORY + '/pht_results/', station=stations, run=1,
-                                         save=False,
-                                         APPROX=True)
+        exact_stat_df = data_generation(pre, label, DIRECTORY + '/pht_results/', stations, save=False, approx=False)
+        approx_stat_df = data_generation(pre, label, DIRECTORY + '/pht_results/', stations, save=False, approx=True)
 
         data_approx.append(approx_stat_df.copy())
         data_exact.append(exact_stat_df.copy())
 
-        print('Station - DPPA-AUC protocol - Step I')
+        print('Station - FHAUC-AUC protocol - Step I')
         t1 = time.perf_counter()
         results['approx'] = dppa_auc_protocol(approx_stat_df, decision_points, results["approx"],
                                            station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
@@ -393,7 +382,8 @@ def execution_simulation(conf_path, sk_path):
 
         print('Station - DPPE-AUC protocol - Step I')
         t1 = time.perf_counter()
-        results['exact'] = dppe_auc_protocol(exact_stat_df, results["exact"], station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
+        results['exact'] = dppe_auc_protocol(exact_stat_df, results["exact"], station=int(stations),
+                                             max_value=MAX, rsa_sk_path=sk_path)
         t2 = time.perf_counter()
         times['exact']["station_1"].append(t2 - t1)
         print(f'Exact execution time by station {times["exact"]["station_1"][-1]:0.4f} seconds')
@@ -439,23 +429,13 @@ def execution_simulation(conf_path, sk_path):
 
 def user_part(res_path, sk_path, sk_pw):
     DIRECTORY = os.getcwd()
-    #  print("Comparing both approaches in same run")
-    MAX = 100000
-    no_of_decision_points = 100
+    print("Comparing both approaches in same run")
 
     approx_auc_diff, exact_auc_diff = [], []
     approx_total_times, exact_total_times = [], []
-    total_repetitions = 1  # 10 before
-
-    best_time = 100
-    best_diff = 10
-
-    decision_points = np.linspace(0, 1, num=no_of_decision_points)[::-1]
-
     MODEL_PATH = DIRECTORY + '/pht_results/model.pkl'
 
     train = Train(model=MODEL_PATH, results=res_path)
-
     results = train.load_results()
 
     times = results['times']
@@ -463,7 +443,7 @@ def user_part(res_path, sk_path, sk_pw):
     data_approx = results['data_approx']
     data_exact = results['data_exact']
     stations = len(times["approx"]['station_1'])
-    print('Station - DPPE-AUC & DPPA-AUC protocol - Step II')
+    print('Station - DPPE-AUC & FHAUC-AUC protocol - Step II')
 
     auc_gt_approx, per['approx'] = calculate_regular_auc(1, per['approx'], data=data_approx, APPROX=True)
     print('Approx GT-AUC: ', auc_gt_approx)
@@ -530,11 +510,11 @@ def run_demo_simulation(conf_path, station_rsa_sk_path, sk_path, sk_pw, res_path
     user_part(res_path, sk_path, sk_pw)
 
 if __name__ == '__main__':
-    res_path = '/Users/Path/test-train/results.pkl'
-    sk_path = '/Users/Path/demo.pem'
-    station_rsa_sk_path = '/Users/Path/pp-auc/key.pem'
-    sk_pw = 'PW'
-    conf_path = '/Users/Path/test-train/train_config.json'
+    res_path = './results.pkl'
+    sk_path = './conf/demo.pem'
+    sk_pw = 'start123'
+    station_rsa_sk_path = './conf/key.pem'
+    conf_path = './conf/train_config.json'
 
     files_to_delete = ['results.pkl', 'model.pkl']
 

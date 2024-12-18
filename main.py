@@ -7,8 +7,8 @@ import struct
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
-from random import randint
+import seaborn as sns
+import random
 from sklearn import metrics
 from paillier.paillier import *
 from cryptography.fernet import Fernet
@@ -24,190 +24,215 @@ from FHM_approx import dppa_auc_protocol, dppa_auc_proxy, create_synthetic_data_
 
 class Train:
     def __init__(self, results=None):
-        """
-        :param results:
-        """
         self.results = results
 
     def load_results(self):
-        """
-        If a result file exists, loads the results, otherwise will return empty results.
-        :return:
-        """
         try:
-            with open('./data/pht_results/' + self.results, 'rb') as results_file:
-                return pickle.load(file=results_file)
-        except Exception:
-            return {'approx': {'enc_rx': {},
-                               'pp_auc_tables': {},
-                               'encrypted_ks': [],
-                               'encrypted_r1': {},  # index is used by station i
-                               'encrypted_r2': {},
-                               'aggregator_rsa_pk': {},
-                               'aggregator_paillier_pk': {},
-                               'stations_paillier_pk': {},
-                               'stations_rsa_pk': {},
-                               'proxy_encrypted_r_N': {},  # index 0 = r1_iN; 1 = r2_iN
-                               'D1': [],
-                               'D2': [],
-                               'D3': [],
-                               'N1': [],
-                               'N2': [],
-                               'N3': []
-                               },
-                    'exact': {'enc_rx': {},
-                              'pp_auc_tables': {},
-                              'encrypted_ks': [],
-                              'encrypted_r1': {},  # index is used by station i
-                              'encrypted_r2': {},
-                              'aggregator_rsa_pk': {},
-                              'aggregator_paillier_pk': {},
-                              'stations_paillier_pk': {},
-                              'stations_rsa_pk': {},
-                              'proxy_encrypted_r_N': {},  # index 0 = r1_iN; 1 = r2_iN
-                              'D1': [],
-                              'D2': [],
-                              'D3': [],
-                              'N1': [],
-                              'N2': [],
-                              'N3': []
-                              }
-                    }
+            with open(f'./data/pht_results/{self.results}', 'rb') as results_file:
+                return pickle.load(results_file)
+        except FileNotFoundError:
+            return self._initialize_results()
+
+    @staticmethod
+    def _initialize_results():
+        return {'approx': Train._empty_result_dict(), 'exact': Train._empty_result_dict()}
+
+    @staticmethod
+    def _empty_result_dict():
+        return {
+            'enc_rx': {}, 'pp_auc_tables': {}, 'encrypted_ks': [],
+            'encrypted_r1': {}, 'encrypted_r2': {}, 'aggregator_rsa_pk': {},
+            'aggregator_paillier_pk': {}, 'stations_paillier_pk': {},
+            'stations_rsa_pk': {}, 'proxy_encrypted_r_N': {}, 'D1': [], 'D2': [], 'D3': [], 'N1': [], 'N2': [], 'N3': []
+        }
 
     def save_results(self, results):
-        """
-        Saves the result file of the train
-        :param results:
-        :return:
-        """
         try:
-            with open('./data/pht_results/' + self.results, 'wb') as results_file:
-                return pickle.dump(results, results_file)
-        except Exception as err:
-            print(err)
-            raise FileNotFoundError("Result file cannot be saved")
-
+            with open(f'./data/pht_results/{self.results}', 'wb') as results_file:
+                pickle.dump(results, results_file)
+        except FileNotFoundError as e:
+            print(f"Error saving results: {e}")
+            raise
 
 def return_df(df):
     return pd.DataFrame(df, columns=['Pre', 'Label', 'Flag'])
 
 
-def create_synthetic_data(num_stations=int, samples=int, fake_patients=None, save=None):
+def create_synthetic_data_bk(num_stations, samples, fake_patients=None):
     """
-    Create and save synthetic data of given number of samples and number of stations. Including flag patients
+    Create synthetic data of given number of samples and number of stations.
     """
-
     dfs = []
     samples_each = samples // num_stations
+
     for station_i in range(num_stations):
         fakes = random.uniform(fake_patients[0], fake_patients[1])
+        np.random.seed(42)
+
+        # Real Data
         real_data = {
             "Pre": np.random.random(size=samples_each),
             "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
             "Flag": np.random.choice([1], size=samples_each)
         }
         df_real = return_df(real_data)
-        # tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-        # values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]
-        # prob = list(df_real['Pre'].value_counts(normalize=True, ascending=False))
-        #
-        # fake_data = {
-        #     "Pre": random.choices(values, weights=prob, k=fake_data_val),
-        #     "Label": np.random.choice([0], size=fake_data_val),
-        #     "Flag": np.random.choice([0], size=fake_data_val)
-        # }
 
-        #
-        #
+        # Fake Data
         tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-        values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]  # unique values
+        values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]
         counts = list(df_real['Pre'].value_counts(ascending=False))
         max_a = counts[0] + int(counts[0] * 0.1)
-        v = [max_a - counts[i] for i in range(len(counts))]  # probabilities
+        v = [max_a - counts[i] for i in range(len(counts))]
         s = pd.Series(np.repeat(values[i], v[i]) for i in range(len(v)))
         list_fakes = s.explode(ignore_index=True)
         fakes = len(list_fakes)
-        # tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-        # values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]  # unique values
-        # counts = list(df_real['Pre'].value_counts(ascending=False))
-        # max_a = counts[0] + int(counts[0] * 0.1)
-        # v = [max_a - counts[i] for i in range(len(counts))]  # probabilities
-        # s = pd.Series(np.repeat(values[i], v[i]) for i in range(len(v)))
-        # list_fakes = s.explode(ignore_index=True)
-        # fakes = len(list_fakes)
 
-        fake_data = {"Pre": list_fakes,
-                     "Label": np.random.choice([0], size=fakes),
-                     "Flag": np.random.choice([0], size=fakes)
-                     }
+        fake_data = {
+            "Pre": list_fakes,
+            "Label": np.random.choice([0], size=fakes),
+            "Flag": np.random.choice([0], size=fakes)
+        }
         df_fake = return_df(fake_data)
 
-        df = [df_real, df_fake]
-        merged = pd.concat(df, axis=0)
-        df = merged.sample(frac=1).reset_index(drop=True)
-        plot_input_data(df, df_real, df_fake, station_i, proxy=False)
+        # Merge DataFrames (Skip if empty)
+        df_list = [df_real, df_fake]
+        df_list = [df for df in df_list if
+                   not df.empty and not df.isna().all().any()]  # Filter out empty or all-NA DataFrames
+        if df_list:
+            merged = pd.concat(df_list, axis=0).sample(frac=1).reset_index(drop=True)
+            merged.loc[merged["Flag"] == 0, "Label"] = 0  # When Flag is 0, Label must also be 0
+            dfs.append(merged)
 
-        df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
-        if save:
-            df.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
-        else:
-            dfs.append(df)
-    if not save:
-        return dfs
+    return dfs
 
 
-def create_synthetic_data_same_size(num_stations=int, samples=int, fake_patients=None, save=None):
+def create_synthetic_data(num_stations, samples, fake_patients=None):
     """
-    Create and save synthetic data of given number of samples and number of stations. Including flag patients
+    Create synthetic data for the specified number of stations with the given number of samples.
+    Each station gets a portion of the total samples, and fake patients are added based on the provided range.
+
+    Args:
+        num_stations (int): Number of stations for data generation.
+        samples (int): Total number of samples to be distributed among stations.
+        fake_patients (tuple): Range (min, max) for generating fake patient values.
+
+    Returns:
+        list: List of DataFrames for each station containing real and fake data.
     """
-    samples_each = (samples // num_stations) // 2
-    fake_data_val = samples // 2
-    fakes_at_station = fake_data_val // num_stations
-    fakes_left = fakes_at_station % num_stations
-    left_over = samples % num_stations
     dfs = []
-    for station_i in range(num_stations):
-        if station_i == range(num_stations)[-1]:  # add left number over at last stations
-            samples_each = samples_each + left_over
-            fakes_at_station = fakes_at_station + fakes_left
+    samples_each = samples // num_stations
 
+    for station_i in range(num_stations):
+        fakes = random.uniform(fake_patients[0], fake_patients[1]) if fake_patients else 0
+        np.random.seed(42)
+
+        # Real Data
         real_data = {
             "Pre": np.random.random(size=samples_each),
             "Label": np.random.choice([0, 1], size=samples_each, p=[0.2, 0.8]),
             "Flag": np.random.choice([1], size=samples_each)
         }
-        df_real = pd.DataFrame(real_data, columns=['Pre', 'Label', 'Flag'])
+        df_real = return_df(real_data)
+
+        # Fake Data
         tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-        values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]  # unique values
+        unique_values = [tmp_val[y] for y in sorted(np.unique(tmp_val, return_index=True)[1])]
         counts = list(df_real['Pre'].value_counts(ascending=False))
-        highest = counts[0] + int(counts[0] * 0.4)
-        v = [highest - counts[x] for x in range(len(counts))]  # probabilities
-        if sum(v) == 0:
-            v = [x + 1 for x in v]
-        s = pd.Series(np.repeat(values[i], v[i]) for i in range(len(v)))
-        list_fakes = s.explode(ignore_index=True)
-        fakes = len(list_fakes)
+        max_count = counts[0] + int(counts[0] * 0.1)
+        repetitions = [max_count - counts[i] for i in range(len(counts))]
+        if sum(repetitions) == 0:
+            repetitions = [x + 1 for x in repetitions]
 
-        fake_data = {"Pre": list_fakes,
-                     "Label": np.random.choice([0], size=fakes),
-                     "Flag": np.random.choice([0], size=fakes)
-                     }
+        synthetic_series = pd.Series(np.repeat(unique_values[i], repetitions[i]) for i in range(len(repetitions)))
+        list_fakes = synthetic_series.explode(ignore_index=True)
+        fake_sample_size = len(list_fakes)
+
+        fake_data = {
+            "Pre": list_fakes,
+            "Label": np.zeros(fake_sample_size, dtype=int),  # Fake data gets Label 0
+            "Flag": np.zeros(fake_sample_size, dtype=int)  # Flag 0 for fake data
+        }
         df_fake = return_df(fake_data)
-        # print("Size fake: {}".format(len(df_fake)))
 
-        df = [df_real, df_fake]
+        # Merge DataFrames (Skip if empty)
+        df_list = [df_real, df_fake]
+        df_list = [df for df in df_list if
+                   not df.empty and not df.isna().all().any()]  # Filter out empty or NA DataFrames
+        if df_list:
+            merged = pd.concat(df_list, axis=0).sample(frac=1).reset_index(drop=True)
+            merged.loc[merged["Flag"] == 0, "Label"] = 0  # Ensure consistency: Label = 0 where Flag = 0
+            plot_input_data(merged, df_real, df_fake, station_i, run, proxy=False)
+            dfs.append(merged)
 
-        merged = pd.concat(df, axis=0)
-        df = merged.sample(frac=1).reset_index(drop=True)
-        plot_input_data(df, df_real, df_fake, station_i, run, proxy=False)
+    return dfs
 
-        df.loc[df["Flag"] == 0, "Label"] = 0  # when Flag is 0 Label must also be 0
-        if save:
-            df.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
-        else:
-            dfs.append(df)
-    if not save:
-        return dfs
+def generate_skewed_predictions(size):
+    size_high = int(size * 0.85)  # 85% of values close to 1
+    size_low = int(size * 0.1)  # 10% of values close to 0
+    size_mid = size - size_high - size_low  # ~5% for mid-range values
+
+    # Bias generation with range enforcement
+    bias_high =  np.clip(np.random.beta(a=0.8, b=1, size=size_high), 0.9, 1)
+    bias_low = np.clip(np.random.beta(a=1, b=0.1, size=size_low), 0, 0.1)
+    bias_mid = np.clip(np.random.beta(a=2, b=2, size=size_mid), 0.1, 0.9)  # Sparse mid-range
+
+    return np.concatenate([bias_low, bias_mid, bias_high])
+
+
+def create_synthetic_data_same_size(num_stations, samples, fake_ratio=(0.1, 0.5)):
+    """
+    Create synthetic data of given number of samples and number of stations with same size.
+    """
+    np.random.seed(42)  # Ensure reproducibility
+
+    samples_each = samples // num_stations
+    leftover_samples = samples % num_stations
+
+    # Cap the number of synthetic samples to 10% - 50% of real data
+    min_fakes = int(samples * fake_ratio[0])
+    max_fakes = int(samples * fake_ratio[1])
+    total_fakes = np.random.randint(min_fakes, max_fakes + 1)
+
+    dfs = []
+    for station_i in range(num_stations):
+        current_samples = samples_each + (leftover_samples if station_i == num_stations - 1 else 0)
+        fakes_this_station = total_fakes // num_stations
+
+        # Step 1: Generate real data
+        real_data = {
+            "Pre": generate_skewed_predictions(current_samples),
+            "Label": np.random.choice([0, 1], size=current_samples, p=[0.2, 0.8]),
+            "Flag": [1] * current_samples
+        }
+        df_real = pd.DataFrame(real_data)
+
+        # Step 2: Generate minimal synthetic data
+        unique_vals = df_real['Pre'].unique()
+        synthetic_pre = []
+        subjects_per_value = max(1, fakes_this_station // len(unique_vals))
+
+        for val in unique_vals:
+            synthetic_pre.extend([val] * subjects_per_value)
+
+        synthetic_pre = synthetic_pre[:fakes_this_station]
+        fake_data = {
+            "Pre": synthetic_pre,
+            "Label": [0] * len(synthetic_pre),
+            "Flag": [0] * len(synthetic_pre)
+        }
+        df_fake = pd.DataFrame(fake_data)
+
+        # Step 3: Merge real and synthetic data
+        merged = pd.concat([df_real, df_fake], ignore_index=True)
+        merged = merged.sample(frac=1).reset_index(drop=True)
+
+        # Ensure consistency: Label = 0 where Flag = 0
+        merged.loc[merged["Flag"] == 0, "Label"] = 0
+        plot_input_data(merged, df_real, df_fake, station_i, run, proxy=False)
+
+        dfs.append(merged)
+
+    return dfs
 
 
 def plot_input_data(df, df_real, df_fake, station, run, proxy=None):
@@ -264,12 +289,12 @@ def calculate_regular_auc(stations, performance, regular_path, save, data, APPRO
     if APPROX:
         performance['flags'].append(0)
         filtered_df = sort_df
-        print('Use data from {} stations. Total of {} subjects (including 0 flag subjects) '.format(stations,
+        print('FHAUC uses data from {} stations. Total of {} subjects (including 0 flag subjects) '.format(stations,
                                                                                                     len(filtered_df)))
     else:
         flags = len(concat_df[concat_df['Flag'] == 0])
         performance['flags'].append(samples)
-        print('Use data from {} stations. Total of {} subjects (including {} flag subjects) '.format(stations,
+        print('DPPE-AUC uses data from {} stations. Total of {} subjects (including {} flag subjects) '.format(stations,
                                                                                                      len(concat_df),
                                                                                                      flags))
         filtered_df = sort_df[sort_df["Flag"] == 1]  # remove flag patients
@@ -461,43 +486,25 @@ def decrypt_symmetric_key(ciphertext, directory, save, keys):
     return decrypted_symmetric_key
 
 
-def dppe_auc_protocol(local_df, prev_results, directory=str, station=int, max_value=int, save_data=None, save_keys=None,
-                      keys=None):
+def dppe_auc_protocol(local_df, prev_results, directory, station, max_value, save_keys, keys):
     """
-    Perform PP-AUC protocol at specific station given dataframe
+    Perform DPPE-AUC protocol at specific station given dataframe.
     """
     agg_pk = prev_results['aggregator_paillier_pk']
     symmetric_key = Fernet.generate_key()  # represents k1 k_n
     if station == 1:
-        r1 = randint(20000, max_value)
-        print("rand r_1 {}".format(r1))
-        enc_table = encrypt_table(local_df, agg_pk, r1, symmetric_key)
-        if save_data:  # Save for transparency the table - not required
-            enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
-
-        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory, save_keys, prev_results)
-        prev_results['encrypted_ks'].append(enc_symmetric_key)
-
+        random.seed(9001)
+        r1 = random.randint(20000, max_value)
         for i in range(len(prev_results['stations_rsa_pk'])):
-            enc_r1 = encrypt(prev_results['stations_paillier_pk'][i], r1)  # homomorphic encryption used
+            enc_r1 = encrypt(prev_results['stations_paillier_pk'][i], r1)  # homomorphic encryption
             prev_results['encrypted_r1'][i] = enc_r1
-
     else:
         enc_r1 = prev_results['encrypted_r1'][station - 1]
-        if save_keys:
-            sk_s_i = pickle.load(open(directory + '/keys/s' + str(station) + '_paillier_sk.p', 'rb'))
-        else:
-            sk_s_i = keys['s_p_sks'][station - 1]
-
-        dec_r1 = decrypt(sk_s_i, enc_r1)
-
-        enc_table = encrypt_table(local_df, agg_pk, dec_r1, symmetric_key)
-        if save_data:
-            enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
-
-        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory, save_keys, prev_results)
-        prev_results['encrypted_ks'].append(enc_symmetric_key)
-
+        sk_s_i = pickle.load(open(directory + f'/keys/s{station}_paillier_sk.p', 'rb')) if save_keys else keys['s_p_sks'][station - 1]
+        r1 = decrypt(sk_s_i, enc_r1)
+    enc_table = encrypt_table(local_df, agg_pk, r1, symmetric_key)
+    enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory, save_keys, prev_results)
+    prev_results['encrypted_ks'].append(enc_symmetric_key)
     prev_results['pp_auc_tables'][station - 1] = enc_table
 
     return prev_results
@@ -539,7 +546,7 @@ def dppe_auc_proxy(directory, results, max_value, save_keys, run, keys):
     sort_df = concat_df.sort_values(by='Dec_pre', ascending=False)
 
     df_new_index = sort_df.reset_index()
-    print("len_df: ", len(df_new_index))
+    # print("len_df: ", len(df_new_index))
     plot_input_data(df_new_index, None, None, None, run, proxy=True)
     M = len(df_new_index)
     tp_values = []
@@ -548,26 +555,24 @@ def dppe_auc_proxy(directory, results, max_value, save_keys, run, keys):
     tp_values.insert(0, encrypt(agg_pk, 0))
     fp_values.insert(0, encrypt(agg_pk, 0))
     tmp_sum = fp_values[0]
-    print(M)
+    #print(M)
     for i in range(1, M + 1):
         tp_values.append(add(agg_pk, tp_values[i - 1], df_new_index['Label'][i - 1]))
         sum_flags = add(agg_pk, df_new_index['Flag'][i - 1], tmp_sum)
         tmp_sum = sum_flags
         fp_values.append(add(agg_pk, sum_flags, mul_const(agg_pk, tp_values[-1], -1)))
 
-    a = randint(1, max_value)
-    b = randint(1, max_value)
-    print("rand a {}".format(a))
-    print("rand b {}".format(b))
+    a = random.randint(1, max_value)
+    b = random.randint(1, max_value)
+
     # Denominator
     # TP_A is summation of labels (TP)
     tp_a_mul = mul_const(agg_pk, tp_values[-1], a)
     fp_a_mul = mul_const(agg_pk, fp_values[-1], b)
 
-    r_1A = randint(1, max_value)
-    r_2A = randint(1, max_value)
-    print("rand r_1A {}".format(r_1A))
-    print("rand r_2A {}".format(r_2A))
+    r_1A = random.randint(1, max_value)
+    r_2A = random.randint(1, max_value)
+
     D1 = add_const(agg_pk, tp_a_mul, r_1A)
     D2 = add_const(agg_pk, fp_a_mul, r_2A)
     D3_1 = mul_const(agg_pk, tp_a_mul, r_2A)
@@ -581,15 +586,15 @@ def dppe_auc_proxy(directory, results, max_value, save_keys, run, keys):
 
     # Tie condition differences between TP and FP
     # determine indexes of threshold values
-    thre_ind = []
+    threshold_indexes = []
     pred = df_new_index["Dec_pre"].to_list()
     for i in range(M - 1):
         if pred[i] != pred[i + 1]:
-            thre_ind.append(i)
+            threshold_indexes.append(i)
 
-    thre_ind = list(map(lambda x: x + 1, thre_ind))  # add one
-    thre_ind.insert(0, 0)
-    len_t = len(thre_ind)
+    threshold_indexes = list(map(lambda x: x + 1, threshold_indexes))  # add one
+    threshold_indexes.insert(0, 0)
+    len_t = len(threshold_indexes)
     print("len_tresholds: ", len_t)
     # Multiply with a and b respectively
     Z_values = z_values(len_t)
@@ -597,16 +602,18 @@ def dppe_auc_proxy(directory, results, max_value, save_keys, run, keys):
     # sum over all n_3 and only store n_3
     N_3_sum = encrypt(agg_pk, 0)
     for i in range(1, len_t + 1):
-        pre_ind = thre_ind[i - 1]
+        pre_ind = threshold_indexes[i - 1]
         if i == len_t:
             cur_ind = -1
         else:
-            cur_ind = thre_ind[i]
+            cur_ind = threshold_indexes[i]
         # Multiply with a and b respectively
         sTP_a = mul_const(agg_pk, add(agg_pk, tp_values[cur_ind], tp_values[pre_ind]), a)
         dFP_b = mul_const(agg_pk, add(agg_pk, fp_values[cur_ind], mul_const(agg_pk, fp_values[pre_ind], -1)), b)
-        r1_i = randint(1, max_value)
-        r2_i = randint(1, max_value)
+        r1_i = random.randint(1, max_value)
+        r2_i = random.randint(1, max_value)
+        #print("rand r1_i {}".format(r1_i))
+        #print("rand r2_i {}".format(r2_i))
         n_1 = add_const(agg_pk, sTP_a, r1_i)
         results["N1"].append(proxy_decrypt(agg_sk, n_1))
 
@@ -625,7 +632,7 @@ def dppe_auc_proxy(directory, results, max_value, save_keys, run, keys):
     return results
 
 
-def pp_auc_station_final(directory, train_results, save_keys, keys, APPROX):
+def pp_auc_station_final(directory, train_results, save_keys, keys, approx):
     """
     Simulation of station delegated AUC parts to compute global DPPE-AUC locally
     """
@@ -658,67 +665,126 @@ def pp_auc_station_final(directory, train_results, save_keys, keys, APPROX):
         auc = 0
     else:
         auc = (N / D) / 2
-    if APPROX:
-        print('DPPA-AUC: {}'.format(auc))
+    if approx:
+        print('FHAUC: {}'.format(auc))
     else:
         print('DPPE-AUC: {}'.format(auc))
     return auc
 
 
-def plot_experiment_1(res):
+def plot_experiment_1(results):
+    """
+     Plots the runtime for all methods (e.g., 'approx', 'exact') provided in the results dictionary.
 
-    options = ['approx', 'exact']
+     :param results: The performance results dictionary containing methods and timing info.
+     """
+    data_frames = []
 
-    for i in range(len(options)):
-        res_part = res[options[i]]
+    for method, res in results.items():
+        # Calculate total time by summing relevant columns
+        total_time = [sum(x) for x in zip(res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2'])]
 
-        total_time = [sum(x) for x in zip(*[res_part['time']['total_step_1'], res_part['time']['proxy'], res_part['time']['stations_2']])]
-        df = pd.DataFrame(list(zip(res_part['time']['stations_1'], res_part['time']['proxy'],
-                                   res_part['time']['stations_2'], total_time, res_part['samples'], res_part['stations'])),
-                          index=res_part['stations'],
-                          columns=['Station_1', 'Proxy', 'Station_2', 'Total', 'Samples', 'Stations'])
+        # Create a DataFrame for each method's results
+        df = pd.DataFrame({
+            'Station_1': res['time']['stations_1'],
+            'Proxy': res['time']['proxy'],
+            'Station_2': res['time']['stations_2'],
+            'Total': total_time,
+            'Samples': res['samples'],
+            'Stations': res['stations'],
+            'Method': method.capitalize()
+        })
 
-        df['Station_2'] = df['Station_2'].multiply(df['Stations'])  # multiply last step by number of stations
-        b_plot = df.boxplot(column='Total', by='Stations', grid=False)
-        plt.suptitle('')  # remove prev title
-        b_plot.set_ylabel('time (sec)')
-        plt.title('Option ' + options[i] + ' ' + str(len(df['Station_2'])) + ' runs with ' + str(res_part['samples'][0]) + ' subjects')
+        # Multiply 'Station_2' by the number of stations for more accurate representation
+        df['Station_2'] *= df['Stations'] # TODO clarify if station_part_2 is already multiplied
 
-        b_plot.plot()
+        # Append to list for later concatenation
+        data_frames.append(df)
 
+    # Combine all data into one DataFrame
+    combined_df = pd.concat(data_frames, ignore_index=True)
+
+    # Plot setup
+    plt.figure(figsize=(12, 8))
+    sns.set_palette(["#1f77b4", "#ff7f0e"])  # Set distinct colors for different methods
+
+    # Create the boxplot with thicker lines for better visibility
+    ax = sns.boxplot(x='Stations', y='Total', hue='Method', data=combined_df, linewidth=2.5)
+    plt.xlabel('Number of Input-Parties')
+    plt.ylabel('Time (sec)')
+    plt.title("Runtime Analysis")
+
+    # Adjust legend position
+    plt.legend(title="Method", loc="upper left")
+    plt.tight_layout()
+
+    # Display the plot
+    plt.show()
+    # Optional: Save the plot
+        #plt.savefig(f'plots/exp1_{method}.png')
+        #plt.close()
+
+def plot_experiment_2(performance):
+    df_list = []
+    for method in performance:
+        res = performance[method]
+        total_time = [sum(x) for x in zip(res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2'])]
+        df = pd.DataFrame({
+            'Method': method,
+            'Station_1': res['time']['stations_1'],
+            'Proxy': res['time']['proxy'],
+            'Station_2': res['time']['stations_2'],
+            'Total': total_time,
+            'Samples': res['samples'],
+            'Stations': res['stations']
+        })
+
+        df['Station_2'] = df['Station_2'] * df['Stations']
+        df_list.append(df)
+
+    # Combine dataframes from all methods
+    df_all = pd.concat(df_list, ignore_index=True)
+
+    c = plt.cm.Set2.colors
+    markers = ['o', 's', '^', 'D']
+    color_iter = iter(c)
+    marker_iter = iter(markers)
+
+    for method in df_all['Method'].unique():
+        color = next(color_iter)
+        marker = next(marker_iter)
+        df_method = df_all[df_all['Method'] == method]
+        for category in df_method['Stations'].unique():
+            df_category = df_method[df_method['Stations'] == category]
+            plt.plot('Samples', 'Total', data=df_category, color=color, marker=marker,
+                     label=f"{method} - {category} stations")
+
+    plt.xlabel('Number of subjects')
+    plt.ylabel('Time (sec)')
+    plt.title('Total Runtime Evaluation')
+    plt.legend(loc="upper left")
     plt.tight_layout()
     plt.show()
-    # plt.savefig('plots/exp1.png')
 
 
-def plot_experiment_2(res):
-    total_time = [sum(x) for x in zip(*[res['time']['total_step_1'], res['time']['proxy'], res['time']['stations_2']])]
-    df = pd.DataFrame(list(zip(res['time']['stations_1'], res['time']['proxy'],
-                               res['time']['stations_2'], total_time, res['samples'], res['stations'])),
-                      index=res['stations'],
-                      columns=['Station_1', 'Proxy', 'Station_2', 'Total', 'Samples', 'Stations'])
-
-    df['Station_2'] = df['Station_2'].multiply(df['Stations'])
-    c = plt.cm.Set2
-    color = iter(c.colors)
-    for category in df.Stations.unique():
-        c = next(color)
-        plt.plot('Samples', 'Total', c=c, data=df.loc[df['Stations'].isin([category])], marker='o',
-                 label=str(category) + ' stations')
-    plt.xlabel('Number of subjects')
-    num_stations = res['stations'][0]
-    plt.ylabel('Time (sec)')
-    plt.title('DPPE-AUC total runtime evaluation with ' + str(num_stations) + ' stations')
-    plt.legend(loc="upper left")
-    plt.savefig('plots/exp2.png')
+def initialize_performance_tracking():
+    return {
+        'time': {
+            'stations_1': [], 'proxy': [], 'stations_2': [], 'total_step_1': []
+        },
+        'total_times': [], 'samples': [], 'flags': [], 'stations': [],
+        'pp-auc': [], 'gt-auc': [], 'diff': []
+    }
 
 
 if __name__ == "__main__":
     """
     Run with either complete experiment 1 or 2 uncommented
     """
-
     DIRECTORY = './data'
+    MAX = 100000
+    no_of_decision_points = 100
+    FAKES = [0.1, 0.6]  # percentage range for random values
 
     SIMULATE_PUSH_PULL = False
     SAVE_DATA = False
@@ -726,101 +792,80 @@ if __name__ == "__main__":
 
     print("Comparing both approaches in same run")
 
-    MAX = 100000
+    # Initialize performance tracking
+    per = {
+        'approx': initialize_performance_tracking(),
+        'exact': initialize_performance_tracking()
+    }
+    experiment_config = {
+        1: {
+            "description": "Experiment 1 - Increasing number of stations with the same sample size",
+            "station_list": [3, 4, 5, 6, 7, 8, 9],
+            "subject_list": [1500],
+            "loops": 10,
+            "experiment_id": 1
+        },
+        2: {
+            "description": "Experiment 2 - Varying number of subjects with a fixed number of stations",
+            "station_list": [3],
+            "subject_list": [30, 90, 180, 360, 720, 1440, 2880, 5760, 11520],
+            "loops": 10,
+            "experiment_id": 2
+        },
+        3: {
+            "description": "Test Experiment 2 - Fast run",
+            "station_list": [2],
+            "subject_list": [10,30,90],
+            "loops": 2,
+            "experiment_id": 2
+        },
+        4:  {
+            "description": "Test Experiment 1 - Fast run",
+            "station_list": [2],
+            "subject_list": [150],
+            "loops": 2,
+            "experiment_id": 1
+        }
+    }
 
-    no_of_decision_points = 200
-    FAKES = [0.1, 0.6]  # percentage range for random values
+    selected_experiment = 3
 
-    EXPERIMENT_1 = True  # one of them must be true
-    EXPERIMENT_2 = False
+    if selected_experiment not in experiment_config:
+        print("Invalid selection. Exiting.")
+        exit(1)
 
-    if EXPERIMENT_1:
-        # Experiment 1
-        station_list = [3,6]
-        subject_list = [150]
-        loops = 2
-    elif EXPERIMENT_2:
-        # Experiment 2
-        station_list = [3]
-        subject_list = [30, 90, 180]  # , 360, 720, 1440, 2880, 5760, 11520]
-        loops = 1
+    # Load the selected experiment configuration
+    experiment = experiment_config[selected_experiment]
+    print(f"Running {experiment['description']}")
 
-    per = {'approx': {'time':
-                          {'stations_1': [],
-                           'proxy': [],
-                           'stations_2': [],
-                           'total_step_1': []
-                           },
-                      'total_times': [],  # total time for each run
-                      'samples': [],
-                      'flags': [],
-                      'stations': [],
-                      'pp-auc': [],
-                      'gt-auc': [],
-                      'diff': []
-                      },
-           'exact': {'time':
-                         {'stations_1': [],
-                          'proxy': [],
-                          'stations_2': [],
-                          'total_step_1': []
-                          },
-                     'total_times': [],  # total time for each run
-                     'samples': [],
-                     'flags': [],
-                     'stations': [],
-                     'pp-auc': [],
-                     'gt-auc': [],
-                     'diff': []
-                     }}
-    #per = {'approx': {'time': {'stations_1': [0.1984941113333356, 0.19385406900000626, 0.1914984443333386, 0.19211002766667207, 0.1999794306666066, 0.19325626366662618, 0.19136655533335065, 0.19200273599994944, 0.19133688866660728, 0.1913567776666696], 'proxy': [16.345045499999998, 16.33334658299998, 16.25011374999997, 16.21170812500003, 16.234686874999966, 16.238068999999996, 16.239693583000076, 16.289057875000026, 16.22380308300012, 16.239371458999813], 'stations_2': [24.382013498999953, 23.87916787500012, 23.91782737500006, 23.869032749999747, 23.901585501, 23.823067499999752, 23.837265249000325, 23.84140862700019, 23.894918877000237, 23.935468248000006], 'total_step_1': [0.5954823340000068, 0.5815622070000188, 0.5744953330000158, 0.5763300830000162, 0.5999382919998197, 0.5797687909998785, 0.5740996660000519, 0.5760082079998483, 0.5740106659998219, 0.5740703330000088]}, 'total_times': [40.92555311033328, 40.406368527000105, 40.35943956933337, 40.27285090266645, 40.336251806666574, 40.254392763666374, 40.26832538733375, 40.32246923800017, 40.31005884866696, 40.36619648466649], 'samples': [1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500], 'flags': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 'stations': [3, 3, 3, 3, 3, 3, 3, 3, 3, 3], 'pp-auc': [0.49298379261614556, 0.4991126056699827, 0.49842925714285713, 0.4925396801982535, 0.5044916804342695, 0.5144220819536424, 0.5072134144981827, 0.4932730086915109, 0.5123831189934538, 0.5092118028310619], 'gt-auc': [0.49300771359594886, 0.4990229321376862, 0.49845485714285714, 0.4924843639367477, 0.5045101191881047, 0.5144424077578051, 0.5071688184270966, 0.49339579116561494, 0.5123404057755699, 0.5091802682663965], 'diff': [2.3920979803304654e-05, -8.9673532296497e-05, 2.56000000000145e-05, -5.5316261505788944e-05, 1.8438753835225974e-05, 2.0325804162779626e-05, -4.459607108608932e-05, 0.00012278247410402177, -4.271321788384963e-05, -3.153456466542526e-05]}, 'exact': {'time': {'stations_1': [0.2916688750000003, 0.28950843033333246, 0.2893862363333142, 0.2858041669999996, 0.29640830533332974, 0.2875637223333645, 0.28670026400004645, 0.2869573473332518, 0.28676723599998394, 0.2869977223333535], 'proxy': [62.774634999999996, 62.087768082999986, 61.53447670899999, 61.400370167000005, 61.27620329199999, 61.401696124999944, 61.49382404200003, 61.60768912499998, 61.36197766700002, 61.41187754199996], 'stations_2': [91.46530937400003, 88.86134525100002, 88.28130950099995, 88.0645286250001, 88.23527137500002, 88.16915687400001, 88.13623899899994, 88.29429312299999, 88.23463137599992, 88.40376862500034], 'total_step_1': [0.875006625000001, 0.8685252909999974, 0.8681587089999425, 0.8574125009999989, 0.8892249159999892, 0.8626911670000936, 0.8601007920001393, 0.8608720419997553, 0.8603017079999518, 0.8609931670000606]}, 'total_times': [154.53161324900003, 151.23862176433335, 150.10517244633326, 149.7507029590001, 149.80788297233335, 149.85841672133333, 149.91676330500002, 150.1889395953332, 149.88337627899992, 150.10264388933365], 'samples': [1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500], 'flags': [1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500], 'stations': [3, 3, 3, 3, 3, 3, 3, 3, 3, 3], 'pp-auc': [0.4775030785260964, 0.4972908572908573, 0.494592, 0.47639455151964416, 0.5141655856189771, 0.5443164292842239, 0.5208171458171458, 0.48102334929866575, 0.5360260233125508, 0.5270907916488762], 'gt-auc': [0.47750307852609647, 0.4972908572908573, 0.494592, 0.47639455151964416, 0.5141655856189771, 0.5443164292842239, 0.5208171458171458, 0.48102334929866575, 0.5360260233125508, 0.5270907916488763], 'diff': [5.551115123125783e-17, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.1102230246251565e-16]}}
-    #plot_experiment_1(per)
-    #exit(0)
     decision_points = np.linspace(0, 1, num=no_of_decision_points)[::-1]
     differences_approx, differences_exact = [], []
     data_approx, data_exact = [], []
-    for subjects in subject_list:
+
+    for subjects in experiment['subject_list']:
         train = Train(results='results.pkl')
 
-        for stations in station_list:
-            for i in range(loops):  # repeat n times, to make boxplot
-                run = i
-                per['approx']['stations'].append(stations)
-                per['exact']['stations'].append(stations)
-                try:
-                    # shutil.rmtree(DIRECTORY + '/')
-                    print("\nnew run")
-                except Exception as e:
-                    pass
-                directories = []
+        for stations in experiment['station_list']:
+            for run in range(experiment['loops']):  # repeat n times, to make boxplot
+                print(f"\nNew run {run + 1}/{experiment['loops']}: {stations} stations, {subjects} subjects")
+
+                # Prepare directories
+                directories = [DIRECTORY]
                 if SAVE_DATA:
-                    directories = [DIRECTORY, DIRECTORY + '/synthetic', DIRECTORY + '/encrypted']
+                    directories += [DIRECTORY + '/synthetic', DIRECTORY + '/encrypted']
                 elif SAVE_KEYS:
-                    directories.append(DIRECTORY)
                     directories.append(DIRECTORY + '/keys')
                 elif SIMULATE_PUSH_PULL:
-                    directories.append(DIRECTORY)
                     directories.append(DIRECTORY + '/pht_results')
 
                 for dir in directories:
-                    if not os.path.exists(dir):
-                        os.makedirs(dir)
+                    os.makedirs(dir, exist_ok=True)
 
-                # Experiment 1 - increase number of stations, but same sample size
-                if SAVE_DATA:
-                    if EXPERIMENT_1:
-                        create_synthetic_data_same_size(stations, subjects, [FAKES[0], FAKES[1]], SAVE_DATA)
-                    elif EXPERIMENT_2:
-                        create_synthetic_data(stations, subjects, [FAKES[0], FAKES[1]], SAVE_DATA)
-
-                    data = {}
-                else:
-                    if EXPERIMENT_1:
-                        exact_data = create_synthetic_data_same_size(stations, subjects, [FAKES[0], FAKES[1]],
-                                                                     SAVE_DATA)
-                        approx_data = create_synthetic_data_dppa(stations, exact_data, SAVE_DATA)
-                    elif EXPERIMENT_2:
-                        data = create_synthetic_data(stations, subjects, [FAKES[0], FAKES[1]], SAVE_DATA)
+                # Generate synthetic data based on experiment type and save setting
+                exact_data_fn = create_synthetic_data_same_size if experiment['experiment_id'] == 1\
+                    else create_synthetic_data
+                exact_data = exact_data_fn(stations, subjects, FAKES)
+                approx_data = create_synthetic_data_dppa(stations, exact_data, SAVE_DATA)
 
                 data_approx.append(approx_data.copy())
                 data_exact.append(exact_data.copy())
@@ -828,110 +873,108 @@ if __name__ == "__main__":
                 results = train.load_results()
                 results['exact'], keys_exact = generate_keys(stations, DIRECTORY, results['exact'], save=SAVE_KEYS)
                 results['approx'], keys_approx = generate_keys(stations, DIRECTORY, results['approx'], save=SAVE_KEYS)
+
                 if SIMULATE_PUSH_PULL:
                     train.save_results(results)
 
-                # compute AUC without encryption for proof of concept
+                per['exact']['stations'].append(stations)
+                per['approx']['stations'].append(stations)
+
+                # Compute AUC without encryption for proof of concept
                 REGULAR_PATH = DIRECTORY + '/synthetic'
                 times_exact, times_approx = [], []
 
                 for i in range(stations):
-                    if SAVE_DATA:
-                        stat_df = pickle.load(open(DIRECTORY + '/synthetic/data_s' + str(i + 1) + '.pkl', 'rb'))
-                    else:
-                        exact_stat_df = exact_data[i]
-                        approx_stat_df = approx_data[i]
+                    stat_df = pickle.load(open(f"{DIRECTORY}/synthetic/data_s{i + 1}.pkl", 'rb')) if SAVE_DATA else None
+                    exact_stat_df = exact_data[i] if not SAVE_DATA else stat_df
+                    approx_stat_df = approx_data[i] if not SAVE_DATA else stat_df
 
                     if SIMULATE_PUSH_PULL:
-                        results = train.load_results()  # loading results simulates pull of image
+                        results = train.load_results()  # Simulate pull of image
 
+                    # DPPA and DPPE protocols
                     t1 = time.perf_counter()
                     results_approx = dppa_auc_protocol(approx_stat_df, decision_points, results['approx'], DIRECTORY,
-                                                       station=i + 1,
-                                                       max_value=MAX, save_data=SAVE_DATA, save_keys=SAVE_KEYS,
-                                                       keys=keys_approx)
+                                                       station=i + 1, max_value=MAX, save_data=SAVE_DATA,
+                                                       save_keys=SAVE_KEYS, keys=keys_approx)
                     t2 = time.perf_counter()
                     times_approx.append(t2 - t1)
 
                     t_1 = time.perf_counter()
                     results_exact = dppe_auc_protocol(exact_stat_df, results['exact'], DIRECTORY, station=i + 1,
-                                                      max_value=MAX,
-                                                      save_data=SAVE_DATA, save_keys=SAVE_KEYS, keys=keys_exact)
+                                                      max_value=MAX, save_keys=SAVE_KEYS, keys=keys_exact) # todo run with gpt_ version
                     t_2 = time.perf_counter()
                     times_exact.append(t_2 - t_1)
-                    print('Exact Station {} step 1 time {}'.format(i + 1, times_exact[-1]))
-                    print('Approx Station {} step 1 time {}'.format(i + 1, times_approx[-1]))
 
-                    # remove at last station all encrypted noise values
-                    if i is stations - 1:
+                    print(f'Exact Station {i + 1} step 1 time: {times_exact[-1]:.4f} seconds')
+                    print(f'Approx Station {i + 1} step 1 time: {times_approx[-1]:.4f} seconds')
+
+                    if i == stations - 1:  # Remove at the last station all encrypted noise values
                         results["approx"].pop('encrypted_r1')
                         results["exact"].pop('encrypted_r1')
 
                     if SIMULATE_PUSH_PULL:
                         train.save_results(results)
 
-                print(f'Exact run {run} total execution time at stations - Step 1 {sum(times_exact):0.4f} seconds')
-                print(f'Exact run {run} average execution time at stations - Step 1 {sum(times_exact) / len(times_exact):0.4f} seconds')
-                print(f'Approx run {run} total execution time at stations - Step 1 {sum(times_approx):0.4f} seconds')
-                print(f'Approx run {run} average execution time at stations - Step 1 {sum(times_approx) / len(times_approx):0.4f} seconds')
+                # Output execution times
+                print(f'Exact run {run + 1} total execution time at stations - Step 1: {sum(times_exact):.4f} seconds')
+                print(
+                    f'Approx run {run + 1} total execution time at stations - Step 1: {sum(times_approx):.4f} seconds')
 
                 per['approx']['time']['stations_1'].append(sum(times_approx) / len(times_approx))
-                per['approx']['time']['total_step_1'].append(sum(times_approx))
                 per['exact']['time']['stations_1'].append(sum(times_exact) / len(times_exact))
-                per['exact']['time']['total_step_1'].append(sum(times_exact))
-                if SIMULATE_PUSH_PULL:
-                    results = train.load_results()
 
+                per['approx']['time']['total_step_1'].append(sum(times_approx))
+                per['exact']['time']['total_step_1'].append(sum(times_exact))
+
+                # Compute ground truth AUC
                 auc_gt_approx, per['approx'] = calculate_regular_auc(stations, per['approx'], REGULAR_PATH, save=False,
                                                                      data=approx_data, APPROX=True)
-                print('Approx GT-AUC: ', auc_gt_approx)
                 auc_gt_exact, per['exact'] = calculate_regular_auc(stations, per['exact'], REGULAR_PATH, save=False,
                                                                    data=exact_data, APPROX=False)
-                print('Exact GT-AUC: ', auc_gt_exact)
 
+                print(f'Approx GT-AUC: {auc_gt_approx}')
+                print(f'Exact GT-AUC: {auc_gt_exact}')
+
+                # Proxy execution and final AUC
                 t3 = time.perf_counter()
                 approx_results = dppa_auc_proxy(DIRECTORY, results["approx"], max_value=MAX, save_keys=SAVE_KEYS,
-                                                keys=keys_approx,
-                                                no_dps=no_of_decision_points)
+                                                keys=keys_approx, no_dps=no_of_decision_points)
                 t4 = time.perf_counter()
                 per["approx"]['time']['proxy'].append(t4 - t3)
+
                 t3 = time.perf_counter()
-                exact_results = dppe_auc_proxy(DIRECTORY, results['exact'], max_value=MAX, save_keys=SAVE_KEYS, run=run,
-                                               keys=keys_exact)
+                exact_results = dppe_auc_proxy(DIRECTORY, results['exact'], max_value=MAX, save_keys=SAVE_KEYS,
+                                               run=run, keys=keys_exact)
                 t4 = time.perf_counter()
                 per["exact"]['time']['proxy'].append(t4 - t3)
 
-                print(f'Exact execution time by proxy station {per["exact"]["time"]["proxy"][-1]:0.4f} seconds')
-                print(f'Approx execution time by proxy station {per["approx"]["time"]["proxy"][-1]:0.4f} seconds')
+                print(f'Exact execution time by proxy: {per["exact"]["time"]["proxy"][-1]:.4f} seconds')
+                print(f'Approx execution time by proxy: {per["approx"]["time"]["proxy"][-1]:.4f} seconds')
 
                 if SIMULATE_PUSH_PULL:
                     train.save_results(results)
                     results = train.load_results()
 
+                # Final AUC calculation
                 t1 = time.perf_counter()
-                auc_pp_exact = pp_auc_station_final(DIRECTORY, results['exact'], SAVE_KEYS, keys_exact, APPROX=False)
+                auc_pp_exact = pp_auc_station_final(DIRECTORY, results['exact'], SAVE_KEYS, keys_exact, approx=False) # todo gpt_
                 t2 = time.perf_counter()
-                local_dppe = t2 - t1
-                per['exact']['time']['stations_2'].append(local_dppe * stations)  # total time for last step
-                print(f'Exact final AUC execution time at one station {i + 1} {local_dppe:0.4f} seconds')
+                per['exact']['time']['stations_2'].append((t2 - t1) * stations)
 
                 t1 = time.perf_counter()
-                auc_pp_approx = pp_auc_station_final(DIRECTORY, results['approx'], SAVE_KEYS, keys_approx, APPROX=True)
+                auc_pp_approx = pp_auc_station_final(DIRECTORY, results['approx'], SAVE_KEYS, keys_approx, approx=True)
                 t2 = time.perf_counter()
-                local_dppa = t2 - t1
+                per['approx']['time']['stations_2'].append((t2 - t1) * stations)
 
-                per['approx']['time']['stations_2'].append(local_dppa * stations)  # total time for last step
-                print(f'Exact final AUC execution time at one station {i + 1} {local_dppe:0.4f} seconds')
-
+                # Record total times and differences
                 total_time_exact = per['exact']["time"]["proxy"][-1] + per['exact']["time"]["stations_2"][-1] + \
                                    per['exact']["time"]["stations_1"][-1]
                 per['exact']['total_times'].append(total_time_exact)
-                print(f'Exact final total exec time: {total_time_exact:0.4f} seconds')
 
                 total_time_approx = per['approx']["time"]["proxy"][-1] + per['approx']["time"]["stations_2"][-1] + \
                                     per['approx']["time"]["stations_1"][-1]
                 per['approx']['total_times'].append(total_time_approx)
-                print(f'Approx final total exec time: {total_time_approx:0.4f} seconds')
 
                 per['approx']['pp-auc'].append(auc_pp_approx)
                 per['exact']['pp-auc'].append(auc_pp_exact)
@@ -940,32 +983,22 @@ if __name__ == "__main__":
                 per['exact']['gt-auc'].append(auc_gt_exact)
 
                 diff_exact = auc_gt_exact - auc_pp_exact
-                differences_exact.append(diff_exact)
-                per['exact']['diff'].append(diff_exact)
-
                 diff_approx = auc_gt_approx - auc_pp_approx
-                differences_approx.append(diff_approx)
+
+                per['exact']['diff'].append(diff_exact)
                 per['approx']['diff'].append(diff_approx)
 
-                print('Difference DPPE-AUC (exact)  to GT: ', diff_exact)
-                print('Difference DPPA-AUC (approx) to GT: ', diff_approx)
-                print('\n')
-
-                print("Exact avg difference {} over {} runs".format(sum(differences_exact) / len(differences_exact),
-                                                                    len(differences_exact)))
-                print("Exact avg exec time {} over {} runs".format(
-                    sum(per['exact']['total_times']) / len(per['exact']['total_times']),
-                    len(per['exact']['total_times'])))
-
-                print("Approx avg difference {} over {} runs".format(sum(differences_approx) / len(differences_approx),
-                                                                     len(differences_approx)))
-                print("Approx avg exec time {} over {} runs".format(
-                    sum(per['approx']['total_times']) / len(per['approx']['total_times']),
-                    len(per['approx']['total_times'])))
-
+                print(f'Difference DPPE-AUC (exact) to GT: {diff_exact}')
+                print(f'Difference FHAUC (approx) to GT: {diff_approx}')
+                print(f'')
+                print(f'Exact avg difference over {len(per["exact"]["diff"])} runs: {sum(per["exact"]["diff"]) / len(per["exact"]["diff"])}')
+                print(f'Approx avg difference over {len(per["approx"]["diff"])} runs: {sum(per["approx"]["diff"]) / len(per["approx"]["diff"])}')
+                print(f'')
+                print(f'Exact avg exec time: {sum(per["exact"]["total_times"]) / len(per["exact"]["total_times"])} seconds')
+                print(f'Approx avg exec time: {sum(per["approx"]["total_times"]) / len(per["approx"]["total_times"])} seconds')
     print(per)
 
-    if EXPERIMENT_1:
+    if experiment['experiment_id'] == 1:
         plot_experiment_1(per)
-    elif EXPERIMENT_2:
+    elif experiment['experiment_id'] == 2:
         plot_experiment_2(per)

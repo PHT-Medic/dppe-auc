@@ -1,7 +1,5 @@
-import os
 import random
-from base64 import urlsafe_b64encode, urlsafe_b64decode
-from binascii import hexlify, unhexlify
+import os
 
 try:
     import gmpy2
@@ -15,17 +13,13 @@ try:
 except ImportError:
     HAVE_CRYPTO = False
 
-# GMP's powmod has greater overhead than Python's pow, but is faster.
-# From a quick experiment on our machine, this seems to be the break even:
+# Define threshold sizes for using GMP's modular operations
 _USE_MOD_FROM_GMP_SIZE = (1 << (8*2))
-_USE_MULMOD_FROM_GMP_SIZE = (1 << 1000) # pow(2, 1000)
+_USE_MULMOD_FROM_GMP_SIZE = (1 << 1000)  # pow(2, 1000)
 
 def powmod(a, b, c):
     """
-    Uses GMP, if available, to do a^b mod c where a, b, c
-    are integers.
-
-    :return int: (a ** b) % c
+    Perform (a^b) % c efficiently using GMP if available, or Python's pow otherwise.
     """
     if a == 1:
         return 1
@@ -34,13 +28,9 @@ def powmod(a, b, c):
     else:
         return int(gmpy2.powmod(a, b, c))
 
-
 def mulmod(a, b, c):
     """
-    Uses GMP, if available, to do a * b mod c, where a, b, c
-    are integers.
-
-    :return int: (a * b) % c
+    Perform (a * b) % c efficiently using GMP if available, or Python's operations otherwise.
     """
     if not HAVE_GMP or max(a, b, c) < _USE_MULMOD_FROM_GMP_SIZE:
         return a * b % c
@@ -48,36 +38,26 @@ def mulmod(a, b, c):
         a, b, c = gmpy2.mpz(a), gmpy2.mpz(b), gmpy2.mpz(c)
         return int(gmpy2.mod(gmpy2.mul(a, b), c))
 
-
 def extended_euclidean_algorithm(a, b):
-    """Extended Euclidean algorithm
-
-    Returns r, s, t such that r = s*a + t*b and r is gcd(a, b)
-
-    See <https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm>
+    """
+    Extended Euclidean algorithm to find gcd(a, b) and coefficients s, t such that r = s*a + t*b.
     """
     r0, r1 = a, b
     s0, s1 = 1, 0
     t0, t1 = 0, 1
     while r1 != 0:
         q = r0 // r1
-        r0, r1 = r1, r0 - q*r1
-        s0, s1 = s1, s0 - q*s1
-        t0, t1 = t1, t0 - q*t1
+        r0, r1 = r1, r0 - q * r1
+        s0, s1 = s1, s0 - q * s1
+        t0, t1 = t1, t0 - q * t1
     return r0, s0, t0
-
 
 def invert(a, b):
     """
-    The multiplicitive inverse of a in the integers modulo b.
-
-    :return int: x, where a * x == 1 mod b
+    Calculate the modular inverse of a modulo b, raising an error if no inverse exists.
     """
     if HAVE_GMP:
         s = int(gmpy2.invert(a, b))
-        # according to documentation, gmpy2.invert might return 0 on
-        # non-invertible element, although it seems to actually raise an
-        # exception; for consistency, we always raise the exception
         if s == 0:
             raise ZeroDivisionError('invert() no inverse exists')
         return s
@@ -87,35 +67,22 @@ def invert(a, b):
             raise ZeroDivisionError('invert() no inverse exists')
         return s % b
 
-
 def isInvertible(a, b):
     """
-    The multiplicitive inverse of a in the integers modulo b.
-
-    :return int: x, where a * x == 1 mod b
+    Check if a has a modular inverse modulo b.
     """
     if HAVE_GMP:
-        s = int(gmpy2.invert(a, b))
-        # according to documentation, gmpy2.invert might return 0 on
-        # non-invertible element, although it seems to actually raise an
-        # exception; for consistency, we always raise the exception
-        if s == 0:
+        try:
+            return int(gmpy2.invert(a, b)) != 0
+        except ZeroDivisionError:
             return False
-        else:
-            return True
     else:
-        r, s, _ = extended_euclidean_algorithm(a, b)
-        if r != 1:
-            return False
-        else:
-            return True
-
+        r, _, _ = extended_euclidean_algorithm(a, b)
+        return r == 1
 
 def getprimeover(N):
-    """Return a random N-bit prime number using the System's best
-    Cryptographic random source.
-
-    Use GMP if available, otherwise fallback to PyCrypto
+    """
+    Return a random N-bit prime number using the best cryptographic random source available.
     """
     if HAVE_GMP:
         randfunc = random.SystemRandom()
@@ -131,45 +98,72 @@ def getprimeover(N):
             n += 2
         return n
 
+def miller_rabin(n, k=25):
+    """
+    Run the Miller-Rabin primality test on n with k iterations to check if n is prime.
+    """
+    assert n > 3, "Input must be greater than 3"
+    d, r = n - 1, 0
+    while d % 2 == 0:
+        d //= 2
+        r += 1
+    assert n - 1 == d * 2**r
+
+    for _ in range(k):
+        a = random.randint(2, n - 2)
+        x = pow(a, d, n)
+        if x == 1 or x == n - 1:
+            continue
+        for _ in range(r - 1):
+            x = x * x % n
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
+
+def is_prime(n, mr_rounds=25):
+    """
+    Test if n is probably prime using a combination of small prime checks and the Miller-Rabin test.
+    """
+    if n <= first_primes[-1]:
+        return n in first_primes
+    for p in first_primes:
+        if n % p == 0:
+            return False
+    return miller_rabin(n, mr_rounds)
 
 def isqrt(N):
-    """ returns the integer square root of N """
+    """
+    Return the integer square root of N using GMP if available, or a Python implementation otherwise.
+    """
     if HAVE_GMP:
         return int(gmpy2.isqrt(N))
     else:
         return improved_i_sqrt(N)
 
-
 def improved_i_sqrt(n):
-    """ taken from
-    https://stackoverflow.com/questions/15390807/integer-square-root-in-python
-    Thanks, mathmandan """
-    assert n >= 0
+    """
+    Compute the integer square root of n using a method that handles large numbers efficiently.
+    """
+    assert n >= 0, "Input must be non-negative"
     if n == 0:
         return 0
-    i = n.bit_length() >> 1    # i = floor( (1 + floor(log_2(n))) / 2 )
-    m = 1 << i    # m = 2^i
-    #
-    # Fact: (2^(i + 1))^2 > n, so m has at least as many bits
-    # as the floor of the square root of n.
-    #
-    # Proof: (2^(i+1))^2 = 2^(2i + 2) >= 2^(floor(log_2(n)) + 2)
-    # >= 2^(ceil(log_2(n) + 1) >= 2^(log_2(n) + 1) > 2^(log_2(n)) = n. QED.
-    #
-    while (m << i) > n: # (m<<i) = m*(2^i) = m*m
+    i = n.bit_length() >> 1
+    m = 1 << i
+    while (m << i) > n:
         m >>= 1
         i -= 1
-    d = n - (m << i) # d = n-m^2
-    for k in range(i-1, -1, -1):
+    d = n - (m << i)
+    for k in range(i - 1, -1, -1):
         j = 1 << k
-        new_diff = d - (((m<<1) | j) << k) # n-(m+2^k)^2 = n-m^2-2*m*2^k-2^(2k)
+        new_diff = d - (((m << 1) | j) << k)
         if new_diff >= 0:
             d = new_diff
             m |= j
     return m
 
-# prime testing
-
+# List of known small primes for quick checks
 first_primes = [
     2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
     73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
@@ -352,70 +346,6 @@ first_primes = [
     17551, 17569, 17573, 17579, 17581, 17597, 17599, 17609, 17623, 17627,
     17657, 17659, 17669, 17681, 17683, 17707, 17713, 17729, 17737, 17747,
     17749, 17761, 17783, 17789, 17791, 17807, 17827, 17837, 17839, 17851,
-    17863,
+    17863
 ]
 
-
-def miller_rabin(n, k):
-    """Run the Miller-Rabin test on n with at most k iterations
-
-    Arguments:
-        n (int): number whose primality is to be tested
-        k (int): maximum number of iterations to run
-
-    Returns:
-        bool: If n is prime, then True is returned. Otherwise, False is
-        returned, except with probability less than 4**-k.
-
-    See <https://en.wikipedia.org/wiki/Miller%E2%80%93Rabin_primality_test>
-    """
-    assert n > 3
-
-    # find r and d such that n-1 = 2^r × d
-    d = n-1
-    r = 0
-    while d % 2 == 0:
-        d //= 2
-        r += 1
-    assert n-1 == d * 2**r
-    assert d % 2 == 1
-
-    for _ in range(k):  # each iteration divides risk of false prime by 4
-        a = random.randint(2, n-2)  # choose a random witness
-
-        x = pow(a, d, n)
-        if x == 1 or x == n-1:
-            continue  # go to next witness
-
-        for _ in range(1, r):
-            x = x*x % n
-            if x == n-1:
-                break   # go to next witness
-        else:
-            return False
-    return True
-
-
-def is_prime(n, mr_rounds=25):
-    """Test whether n is probably prime
-
-    See <https://en.wikipedia.org/wiki/Primality_test#Probabilistic_tests>
-
-    Arguments:
-        n (int): the number to be tested
-        mr_rounds (int, optional): number of Miller-Rabin iterations to run;
-            defaults to 25 iterations, which is what the GMP library uses
-
-    Returns:
-        bool: when this function returns False, `n` is composite (not prime);
-        when it returns True, `n` is prime with overwhelming probability
-    """
-    # as an optimization we quickly detect small primes using the list above
-    if n <= first_primes[-1]:
-        return n in first_primes
-    # for small dividors (relatively frequent), euclidean division is best
-    for p in first_primes:
-        if n % p == 0:
-            return False
-    # the actual generic test; give a false prime with probability 2⁻⁵⁰
-    return miller_rabin(n, mr_rounds)

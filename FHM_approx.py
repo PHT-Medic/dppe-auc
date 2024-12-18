@@ -1,3 +1,4 @@
+import os
 import pickle
 import numpy as np
 import pandas as pd
@@ -33,12 +34,10 @@ def create_synthetic_data_dppa(num_stations=int, df=None, save=None):  # edited
         #df_real.columns = df_r.columns
         # tmp_val = list(df_real['Pre'].sort_values(ascending=False))
 
-        if save:
-            df_real.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
-        else:
-            dfs.append(df_real)
-    if not save:
-        return dfs
+
+        dfs.append(df_real)
+
+    return dfs
 
 
 def encrypt_table_dppa(station_df, agg_pk, r1, symmetric_key):  # edited
@@ -64,13 +63,13 @@ def load_rsa_pk(path, save, results):
     return public_key
 
 
-def encrypt_symmetric_key(symmetric_key, directory, save, results):
+def encrypt_symmetric_key(symmetric_key, results):
     """
     Encrypt symmetric key_station with public rsa key of aggregator
     return: encrypted_symmetric_key
     """
-    path = directory + '/keys/agg_rsa_public_key.pem'
-    rsa_agg_pk = load_rsa_pk(path, save, results)
+    path = os.getcwd() + '/test-train/keys/agg_rsa_public_key.pem'
+    rsa_agg_pk = load_rsa_pk(path, False, results)
     encrypted_symmetric_key = rsa_agg_pk.encrypt(symmetric_key, padding.OAEP(
         mgf=padding.MGF1(algorithm=hashes.SHA256()),
         algorithm=hashes.SHA256(),
@@ -126,10 +125,8 @@ def dppa_auc_protocol(station_df, dps, prev_results, directory=str, station=int,
         r1 = randint(1, max_value)  # delete later
 
         enc_table = encrypt_table_dppa(my_data, agg_pk, r1, symmetric_key)
-        if save_data:  # Save for transparency the table - not required
-            enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
 
-        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory, save_keys, prev_results)
+        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, prev_results)
         prev_results['encrypted_ks'].append(enc_symmetric_key)
 
         for i in range(len(prev_results['stations_rsa_pk'])):
@@ -146,10 +143,8 @@ def dppa_auc_protocol(station_df, dps, prev_results, directory=str, station=int,
         dec_r1 = decrypt(sk_s_i, enc_r1)
 
         enc_table = encrypt_table_dppa(my_data, agg_pk, dec_r1, symmetric_key)
-        if save_data:
-            enc_table.to_pickle(directory + '/encrypted/data_s' + str(station) + '.pkl')
 
-        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, directory, save_keys, prev_results)
+        enc_symmetric_key = encrypt_symmetric_key(symmetric_key, prev_results)
         prev_results['encrypted_ks'].append(enc_symmetric_key)
 
     prev_results['pp_auc_tables'][station - 1] = enc_table

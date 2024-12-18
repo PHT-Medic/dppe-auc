@@ -27,13 +27,8 @@ def create_synthetic_data_dppa(num_stations=int, df=None, save=None):  # edited
         }
 
         df_r = pd.DataFrame(real_data, columns=['Pre', 'Label'])
-
         df_r.sort_values('Pre', ascending=False, inplace=True)
-        #df_real = pd.DataFrame(np.repeat(df_r.values, 2, axis=0))
         df_real = df_r.loc[np.repeat(df_r.index, 2)].reset_index(drop=True)
-        #df_real.columns = df_r.columns
-        # tmp_val = list(df_real['Pre'].sort_values(ascending=False))
-
         if save:
             df_real.to_pickle('./data/synthetic/data_s' + str(station_i + 1) + '.pkl')
         else:
@@ -46,8 +41,6 @@ def encrypt_table_dppa(station_df, agg_pk, r1, symmetric_key):  # edited
     """
     Encrypt dataframe of given station dataframe with paillier public key of aggregator and random values
     """
-    print("Size of station_df: ", len(station_df))
-
     station_df["tp"] = station_df["tp"].apply(lambda x: encrypt(agg_pk, x))
     station_df["fp"] = station_df["fp"].apply(lambda x: encrypt(agg_pk, x))
 
@@ -155,7 +148,7 @@ def dppa_auc_protocol(station_df, dps, prev_results, directory=str, station=int,
                 label=None,
             )
         )
-        sk_s_i = prev_results['enc_s_p_sks'][station - 1]  # TODO verify if second station is correct positioned
+        sk_s_i = prev_results['enc_s_p_sks'][station - 1]
         dec_sk = {'n': Fernet(env_symm_key).decrypt(sk_s_i['n']).decode(),
                   'x': Fernet(env_symm_key).decrypt(sk_s_i['x']).decode()
                   }
