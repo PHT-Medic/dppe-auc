@@ -53,10 +53,10 @@ class Train:
                     'station': -1,
                     'data_approx': [],
                     'data_exact': [],
-                    'per': {'approx': {'samples': [],
+                    'per': {'DPPA-AUC': {'samples': [],
                                        'flags': [],
                                        'total_time': []},
-                            'exact': {'samples': [],
+                            'DPPE-AUC': {'samples': [],
                                       'flags': [],
                                       'total_time': []}
                             },
@@ -271,7 +271,7 @@ def initial_station(results, conf_path):
 def execution_simulation(conf_path, sk_path):
     DIRECTORY = os.getcwd()
 
-    print("Comparing DPPE-AUC and FHAUC in same run")
+    print("Comparing DPPE-AUC and DPPA-AUC in same run")
     MAX = 100000
     no_of_decision_points = 100
 
@@ -372,7 +372,7 @@ def execution_simulation(conf_path, sk_path):
         data_approx.append(approx_stat_df.copy())
         data_exact.append(exact_stat_df.copy())
 
-        print('Station - FHAUC-AUC protocol - Step I')
+        print('Station - DPPA-AUC protocol - Step I')
         t1 = time.perf_counter()
         results['approx'] = dppa_auc_protocol(approx_stat_df, decision_points, results["approx"],
                                            station=int(stations), max_value=MAX, rsa_sk_path=sk_path)
@@ -445,7 +445,7 @@ def user_part(res_path, sk_path, sk_pw):
     stations = len(times["approx"]['station_1'])
     print('Station - DPPE-AUC & FHAUC-AUC protocol - Step II')
 
-    auc_gt_approx, per['FHAUC'] = calculate_regular_auc(1, per['FHAUC'], data=data_approx, APPROX=True)
+    auc_gt_approx, per['DPPA-AUC'] = calculate_regular_auc(1, per['DPPA-AUC'], data=data_approx, APPROX=True)
     print('Approx GT-AUC: ', auc_gt_approx)
     auc_gt_exact, per['DPPE-AUC'] = calculate_regular_auc(1, per['DPPE-AUC'], data=data_exact, APPROX=False)
     print('Exact GT-AUC: ', auc_gt_exact)
