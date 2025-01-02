@@ -1,9 +1,14 @@
-# DPPE-AUC
+# PP-AUC
 
+## DPPE-AUC
 **Distributed Privacy-Preserving Exact - Area Under the Curve** (DPPE-AUC) is a novel method for calculating the exact
 global AUC without exposing individual sensitive input data. The approach leverages a combination of Paillier encryption,
 symmetric and asymmetric cryptography, and perfect randomized encoding to ensure privacy and accuracy, even in the
 presence of tie conditions.
+
+## DPPA-AUC
+**Distributed Privacy-Preserving Approximation - Area Under the Curve** (DPPA-AUC) is another novel method for calculating the approximate
+global AUC without exposing individual sensitive input data. The approximation method utilizes similar technologies but only approximates the AUC based on a preset number of decision points.
 
 ## Install requirements
 Run `pip install -r requirements.txt` to ensure all requirements are fulfilled.
