@@ -29,9 +29,6 @@ The **input data figures** illustrate the **real distribution** of prediction va
 - **Y-axis**: Number of subjects (logarithmic scale where applicable).  
 - The **green bars** represent real subjects (`Flag = 1`) with their associated prediction values.  
 - These distributions can exhibit **biases** (e.g., values clustered around specific ranges, such as near 0 or 1) depending on the data.
-![plot 1](./plots/hiv_s1.png)
-![plot 2](./plots/hiv_s2.png)
-![plot 3](./plots/hiv_s3.png)
 
 ### **Obscured Data Figures**  
 The **obscured data figures** aim to **hide the original input data distribution** while maintaining a minimal runtime overhead and threshold size:
@@ -48,7 +45,7 @@ The **obscured data figures** aim to **hide the original input data distribution
    To obscure peaks or patterns in the real distribution while:  
    1. **Minimizing Information Leakage**: Synthetic data masks real peaks without altering the prediction value space.  
    2. **Maintaining Efficiency**: Minimal synthetic data introduces negligible computational overhead.
-![plot 4](./plots/hiv_sp.png)
+![plot 1](./plots/Runs_HIV_demo.png)
 
 
 ## Synthetic Data generation
@@ -56,19 +53,19 @@ Two experiments are used to measure the runtime with synthetic data.
 To generate sample data, specify the number of stations and subjects. In the following experiments 10-60% of flag subjects are added randomly.
 
 ## Experiments
-The performance is evaluated by comparing the proposed method against the standard scikit-learn AUC library and the [FHAUC method](https://arxiv.org/pdf/2403.14428).
+The performance is evaluated by comparing the proposed methods against the standard scikit-learn AUC library.
 
 ### Varying Number of Input Parties
 In Experiment 1, the number of input samples remains constant, while the number of input parties varies.
 
 The execution time is measured for each step and each party across 10 runs. As a result, the total execution time changes depending on the number of input parties involved. This provides insights into the scalability of the method with respect to the number of parties.
-![plot 5](./plots/exp1.png)
+![plot 2](./plots/exp1.png)
 
 ### Varying Number of Input Samples
 In Experiment 2, the number of input samples increases while the setup remains fixed at 3 stations.
 
 As the number of samples grows, the total execution time also increases due to the additional computational overhead required for encrypting and decrypting a larger volume of data.
-![plot 6](./plots/exp2.png)
+![plot 3](./plots/exp2.png)
 
 #### Observed Differences
 - **Exact Average Difference (over 90 runs):** `-1.2335811384723961e-17`  
